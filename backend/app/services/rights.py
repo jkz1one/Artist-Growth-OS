@@ -27,6 +27,8 @@ class RightsEvaluation:
 
 
 class RightsEngine:
+    rule_version = "rights-v1"
+
     REQUIRED_TRACK = {
         RightsCategory.MASTER,
         RightsCategory.COMPOSITION,

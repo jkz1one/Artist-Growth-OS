@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 
+from app.domain.enums import PublicationStatus
 from app.platforms.base import PublishRequest, PublishResult
 
 
@@ -20,7 +21,7 @@ class FakePublisher:
         post_id = "fake_" + hashlib.sha256(request.idempotency_key.encode()).hexdigest()[:16]
         result = PublishResult(
             platform_post_id=post_id,
-            status="PUBLISHED",
+            status=PublicationStatus.PUBLISHED,
             published_at=datetime.now(timezone.utc),
             canonical_url=f"https://fake.publisher.local/posts/{post_id}",
         )

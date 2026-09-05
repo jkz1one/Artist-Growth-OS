@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from app.domain.enums import PublicationStatus
+
 
 @dataclass(frozen=True)
 class PublishRequest:
@@ -17,7 +19,7 @@ class PublishRequest:
 @dataclass(frozen=True)
 class PublishResult:
     platform_post_id: str
-    status: str
+    status: PublicationStatus
     published_at: datetime
     canonical_url: str
 

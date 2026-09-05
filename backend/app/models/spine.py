@@ -147,6 +147,7 @@ class RenderPlan(UUIDTimestampMixin, Base):
 
 class Render(UUIDTimestampMixin, Base):
     __tablename__ = "renders"
+    __table_args__ = (UniqueConstraint("render_plan_id", "sha256", name="uq_render_plan_artifact"),)
 
     render_plan_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("render_plans.id", ondelete="CASCADE"), index=True)
     artifact_uri: Mapped[str] = mapped_column(Text, nullable=False)
@@ -160,7 +161,7 @@ class Candidate(UUIDTimestampMixin, Base):
 
     artist_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("artists.id", ondelete="CASCADE"), index=True)
     concept_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("creative_concepts.id", ondelete="RESTRICT"))
-    render_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("renders.id", ondelete="RESTRICT"))
+    render_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("renders.id", ondelete="RESTRICT"), nullable=True)
     audio_use_plan_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("audio_use_plans.id", ondelete="RESTRICT"))
     status: Mapped[CandidateStatus] = mapped_column(Enum(CandidateStatus, native_enum=False), nullable=False)
     target_platform: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -169,6 +170,7 @@ class Candidate(UUIDTimestampMixin, Base):
 
 class RightsDecision(UUIDTimestampMixin, Base):
     __tablename__ = "rights_decisions"
+    __table_args__ = (UniqueConstraint("candidate_id", "rule_version", name="uq_rights_decision_rule"),)
 
     candidate_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
     status: Mapped[DecisionStatus] = mapped_column(Enum(DecisionStatus, native_enum=False), nullable=False)
@@ -178,6 +180,7 @@ class RightsDecision(UUIDTimestampMixin, Base):
 
 class PolicyDecision(UUIDTimestampMixin, Base):
     __tablename__ = "policy_decisions"
+    __table_args__ = (UniqueConstraint("candidate_id", "rule_version", name="uq_policy_decision_rule"),)
 
     candidate_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
     status: Mapped[DecisionStatus] = mapped_column(Enum(DecisionStatus, native_enum=False), nullable=False)
@@ -187,9 +190,11 @@ class PolicyDecision(UUIDTimestampMixin, Base):
 
 class DistinctnessDecision(UUIDTimestampMixin, Base):
     __tablename__ = "distinctness_decisions"
+    __table_args__ = (UniqueConstraint("candidate_id", "rule_version", name="uq_distinctness_decision_rule"),)
 
     candidate_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("candidates.id", ondelete="CASCADE"), index=True)
     status: Mapped[DecisionStatus] = mapped_column(Enum(DecisionStatus, native_enum=False), nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(80), default="foundation-distinctness-v1", nullable=False)
     novelty_score: Mapped[float] = mapped_column(Float, nullable=False)
     semantic_similarity: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     visual_similarity: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
@@ -199,7 +204,10 @@ class DistinctnessDecision(UUIDTimestampMixin, Base):
 
 class Publication(UUIDTimestampMixin, Base):
     __tablename__ = "publications"
-    __table_args__ = (UniqueConstraint("platform", "idempotency_key", name="uq_publication_idempotency"),)
+    __table_args__ = (
+        UniqueConstraint("platform", "idempotency_key", name="uq_publication_idempotency"),
+        UniqueConstraint("candidate_id", "platform", name="uq_candidate_platform_publication"),
+    )
 
     candidate_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("candidates.id", ondelete="RESTRICT"), index=True)
     platform: Mapped[str] = mapped_column(String(40), nullable=False)
