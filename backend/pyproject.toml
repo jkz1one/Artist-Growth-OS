@@ -34,3 +34,8 @@ pythonpath = ["."]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["alembic*", "tests*"]

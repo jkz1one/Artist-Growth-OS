@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from app.domain.enums import DecisionStatus
-from app.platforms.base import PublishRequest, PublishResult, Publisher
+from app.platforms.base import Publisher, PublishRequest, PublishResult
 from app.rendering.ffmpeg import FFmpegRenderer
 from app.rendering.qc import MediaQC
 from app.schemas.rendering import DeterministicRenderPlan

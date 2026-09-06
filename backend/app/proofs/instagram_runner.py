@@ -29,7 +29,7 @@ class InstagramOperatorConfig:
     allowed_media_hosts: tuple[str, ...]
 
     @classmethod
-    def from_env(cls, environ: Mapping[str, str]) -> "InstagramOperatorConfig":
+    def from_env(cls, environ: Mapping[str, str]) -> InstagramOperatorConfig:
         api_version = environ.get("INSTAGRAM_PROOF_API_VERSION", "").strip()
         access_token = environ.get("INSTAGRAM_PROOF_ACCESS_TOKEN", "").strip()
         raw_hosts = environ.get("INSTAGRAM_PROOF_MEDIA_HOSTS", "")

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, JSON, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -12,7 +12,7 @@ from app.domain.enums import PlatformProofStatus
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class PlatformAccount(Base):

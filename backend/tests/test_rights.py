@@ -3,6 +3,8 @@ from datetime import date, timedelta
 from app.domain.enums import DecisionStatus, RightsCategory
 from app.services.rights import GrantEvidence, RightsEngine
 
+TEST_TODAY = date(2026, 9, 6)
+
 
 def grant(subject_type: str, subject_id: str, category: RightsCategory, **kwargs) -> GrantEvidence:
     return GrantEvidence(
@@ -25,13 +27,25 @@ def complete_grants() -> tuple[GrantEvidence, ...]:
 
 
 def test_rights_clear_only_when_every_required_grant_is_clear() -> None:
-    result = RightsEngine().evaluate(track_id="t1", asset_ids=["a1"], platform="FAKE", grants=complete_grants())
+    result = RightsEngine().evaluate(
+        track_id="t1",
+        asset_ids=["a1"],
+        platform="FAKE",
+        grants=complete_grants(),
+        today=TEST_TODAY,
+    )
     assert result.status == DecisionStatus.CLEAR
     assert not result.missing
 
 
 def test_missing_right_fails_closed_as_unknown() -> None:
-    result = RightsEngine().evaluate(track_id="t1", asset_ids=["a1"], platform="FAKE", grants=complete_grants()[:-1])
+    result = RightsEngine().evaluate(
+        track_id="t1",
+        asset_ids=["a1"],
+        platform="FAKE",
+        grants=complete_grants()[:-1],
+        today=TEST_TODAY,
+    )
     assert result.status == DecisionStatus.UNKNOWN
     assert any("DERIVATIVE_EDIT" in item for item in result.missing)
 
@@ -42,9 +56,15 @@ def test_expired_grant_is_reported_as_expired() -> None:
         "ASSET",
         "a1",
         RightsCategory.DERIVATIVE_EDIT,
-        expires_on=date.today() - timedelta(days=1),
+        expires_on=TEST_TODAY - timedelta(days=1),
     )
-    result = RightsEngine().evaluate(track_id="t1", asset_ids=["a1"], platform="FAKE", grants=grants)
+    result = RightsEngine().evaluate(
+        track_id="t1",
+        asset_ids=["a1"],
+        platform="FAKE",
+        grants=grants,
+        today=TEST_TODAY,
+    )
     assert result.status == DecisionStatus.EXPIRED
     assert any("EXPIRED" in item for item in result.expired)
 
@@ -56,8 +76,14 @@ def test_active_renewal_supersedes_expired_historical_grant() -> None:
             "ASSET",
             "a1",
             RightsCategory.DERIVATIVE_EDIT,
-            expires_on=date.today() - timedelta(days=30),
+            expires_on=TEST_TODAY - timedelta(days=30),
         )
     )
-    result = RightsEngine().evaluate(track_id="t1", asset_ids=["a1"], platform="FAKE", grants=grants)
+    result = RightsEngine().evaluate(
+        track_id="t1",
+        asset_ids=["a1"],
+        platform="FAKE",
+        grants=grants,
+        today=TEST_TODAY,
+    )
     assert result.status == DecisionStatus.CLEAR

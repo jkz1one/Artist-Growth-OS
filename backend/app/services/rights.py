@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
+from typing import ClassVar
 
 from app.domain.enums import DecisionStatus, RightsCategory
 
@@ -29,15 +30,19 @@ class RightsEvaluation:
 class RightsEngine:
     rule_version = "rights-v1"
 
-    REQUIRED_TRACK = {
-        RightsCategory.MASTER,
-        RightsCategory.COMPOSITION,
-        RightsCategory.AUDIOVISUAL_USE,
-    }
-    REQUIRED_ASSET = {
-        RightsCategory.PROMOTIONAL_USE,
-        RightsCategory.DERIVATIVE_EDIT,
-    }
+    REQUIRED_TRACK: ClassVar[frozenset[RightsCategory]] = frozenset(
+        {
+            RightsCategory.MASTER,
+            RightsCategory.COMPOSITION,
+            RightsCategory.AUDIOVISUAL_USE,
+        }
+    )
+    REQUIRED_ASSET: ClassVar[frozenset[RightsCategory]] = frozenset(
+        {
+            RightsCategory.PROMOTIONAL_USE,
+            RightsCategory.DERIVATIVE_EDIT,
+        }
+    )
 
     def evaluate(
         self,
@@ -48,13 +53,17 @@ class RightsEngine:
         grants: Iterable[GrantEvidence],
         today: date | None = None,
     ) -> RightsEvaluation:
-        today = today or date.today()
+        today = today or datetime.now(UTC).date()
         grants = tuple(grants)
         missing: list[str] = []
         restricted: list[str] = []
         expired: list[str] = []
 
-        def check(subject_type: str, subject_id: str, categories: set[RightsCategory]) -> None:
+        def check(
+            subject_type: str,
+            subject_id: str,
+            categories: frozenset[RightsCategory],
+        ) -> None:
             for category in categories:
                 prefix = f"{subject_type}:{subject_id}:{category}"
                 matches = [

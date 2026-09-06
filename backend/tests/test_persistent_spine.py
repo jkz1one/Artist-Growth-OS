@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -10,7 +10,13 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
-from app.domain.enums import AudioStrategy, CandidateStatus, DecisionStatus, PublicationStatus, RightsCategory
+from app.domain.enums import (
+    AudioStrategy,
+    CandidateStatus,
+    DecisionStatus,
+    PublicationStatus,
+    RightsCategory,
+)
 from app.models.spine import (
     Artist,
     Asset,
@@ -48,7 +54,7 @@ class RecordingPublisher:
         return PublishResult(
             platform_post_id=f"remote-{request.idempotency_key[:12]}",
             status=PublicationStatus.PUBLISHED,
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
             canonical_url=f"https://fake.publisher.local/{request.idempotency_key[:12]}",
         )
 

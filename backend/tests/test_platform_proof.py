@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
