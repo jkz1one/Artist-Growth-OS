@@ -143,8 +143,10 @@ class ProofInspector:
             ),
             PlatformProofStatus.READY: (
                 "READY_FOR_GUARDED_PUBLISH",
-                "capabilities captured; any live publish still requires an enabled "
-                "platform runner and explicit confirmation",
+                (
+                    "capabilities captured; any live publish still requires an enabled "
+                    "platform runner and explicit confirmation"
+                ),
                 ("SHOW", "PUBLISH_GUARDED"),
             ),
             PlatformProofStatus.PUBLISHING: (
