@@ -1,0 +1,98 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: artist_growth_ci
+          POSTGRES_USER: artist_growth
+          POSTGRES_PASSWORD: artist_growth
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U artist_growth -d artist_growth_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Ensure FFmpeg is available
+        shell: bash
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+
+      - name: Install backend and development dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Ruff
+        working-directory: backend
+        run: ruff check app tests
+
+      - name: Compile Python sources
+        working-directory: backend
+        run: python -m compileall -q app tests
+
+      - name: Backend tests
+        working-directory: backend
+        run: pytest -q
+
+      - name: SQLite migration round trip
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite+pysqlite:////tmp/artist-growth-os-ci.db
+        run: |
+          rm -f /tmp/artist-growth-os-ci.db
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: PostgreSQL migration round trip
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://artist_growth:artist_growth@127.0.0.1:5432/artist_growth_ci
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
