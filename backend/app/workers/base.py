@@ -90,7 +90,8 @@ class DurableWorker:
                 delay_seconds=exc.delay_seconds,
                 now=now,
             )
-        except Exception as exc:  # bounded fail-safe for unexpected transient faults
+        # Final containment boundary: unexpected handler faults stay bounded by retry policy.
+        except Exception as exc:  # noqa: BLE001
             delay = min(30 * (2 ** max(lease.attempt_count - 1, 0)), 300)
             status = self.store.retry(
                 job_id=lease.job_id,
