@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from app.domain.enums import CapabilitySupport, PublicationStatus
 from app.platforms.proof.base import (
     CapabilityReport,
+    ProofCheckpoint,
     ProofMetricSnapshot,
     ProofPostStatus,
     ProofPublishReceipt,
@@ -38,7 +39,11 @@ class FakePlatformProofAdapter:
         )
 
     def publish_controlled(
-        self, external_account_id: str, request: ProofPublishRequest
+        self,
+        external_account_id: str,
+        request: ProofPublishRequest,
+        *,
+        checkpoint: ProofCheckpoint | None = None,
     ) -> ProofPublishReceipt:
         self.publish_calls += 1
         existing = self._posts.get(request.idempotency_key)
@@ -53,6 +58,8 @@ class FakePlatformProofAdapter:
             raw={"post_id": post_id},
         )
         self._posts[request.idempotency_key] = receipt
+        if checkpoint is not None:
+            checkpoint({"stage": "MEDIA_PUBLISHED", "media_id": post_id})
         return receipt
 
     def reconcile_publish(
@@ -61,6 +68,7 @@ class FakePlatformProofAdapter:
         *,
         platform_post_id: str | None,
         idempotency_key: str,
+        remote_context: dict[str, object] | None = None,
     ) -> ProofPostStatus:
         receipt = self._posts.get(idempotency_key)
         if receipt is None:
