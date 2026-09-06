@@ -35,6 +35,16 @@
 
 No real social adapter is production-ready merely because official documentation describes an endpoint. Instagram now has a proof-only implementation, but it remains barred from autonomous publishing until a real owned professional account passes: capability capture -> one controlled public Reel -> durable media ID/status reconciliation -> raw media insights, with no second publication call.
 
+## Operator proof runner increment
+
+- `start` creates/reuses the account/run and captures capabilities but has no publication path.
+- `show` is database-only and requires no Instagram credential configuration.
+- `publish` is the only live-publication command and requires the exact phrase `I_UNDERSTAND_THIS_WILL_POST_PUBLICLY`.
+- `reconcile` and `metrics` resume an existing durable run by UUID without republishing.
+- Instagram access-token fields are excluded from runtime-config `repr()` output.
+- The operator runbook documents credential handling and the fail-closed recovery sequence.
+- Full backend suite after the runner increment: 42 tests passed; Python compileall and the real CLI `--help` path passed. This increment has no schema changes.
+
 ## Next engineering increment
 
-Add an explicit, operator-invoked Instagram proof runner that reads credentials only from runtime environment/configuration, requires a deliberate live-publish confirmation, and can resume `reconcile`/`metrics` by proof-run ID. After that, the remaining blocker is empirical: configure an owned Instagram professional account/Meta app, a controlled public proof-media URL, and execute the first real proof.
+The software path for the first Instagram proof is now ready. The remaining blocker is empirical/environmental: configure an owned Instagram professional account and Meta app, migrate a real PostgreSQL database, host one controlled proof video on the approved public media domain, then execute `start` and inspect the captured capabilities before deliberately authorizing the single live `publish`.
