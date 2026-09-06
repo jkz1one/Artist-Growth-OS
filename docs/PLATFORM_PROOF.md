@@ -124,21 +124,59 @@ The deliberate decision not to persist the resumable session URI means an interr
 - exact Analytics metric availability and reporting latency;
 - a real controlled upload and raw metric retrieval.
 
-## TikTok
+## TikTok — proof-only adapter implemented
 
-TikTok API for Business documents the Organic API as the product for brands managing their organic TikTok presence. Its current reference includes public video publishing to an owned account, publishing-status lookup, account/post insights, and Discovery APIs. TikTok also requires video URLs used by the business publish endpoint to come from a verified URL property (with a documented test URL exception for testing).
+The third real proof adapter targets the current **TikTok API for Business / Organic API / Accounts API** path for a brand-owned TikTok account. It deliberately does not implement a production `Publisher` or a live proof runner.
 
-Sources:
+Current official TikTok documentation (verified 2026-09-06) establishes the following platform mechanics:
+
+- API for Business uses `https://business-api.tiktok.com/open_api` with current reference version `v1.3`;
+- Accounts API exposes token-scope inspection, owned business-account profile data, account media, posting settings, public video publishing, and publishing-status lookup;
+- public video publishing uses `/business/video/publish/` for an owned TikTok account;
+- publish reconciliation uses `/business/publish/status/`;
+- account post data/metrics are available through `/business/video/list/`;
+- a video URL supplied to the publish endpoint must be covered by an owned verified URL property; TikTok blocks unverified URLs outside its documented testing exception;
+- TikTok supports domain and URL-prefix verification for those media properties;
+- beginning 2026-03-20, new app/scope requests involving TikTok Accounts require the Accounts API Access Application Form.
+
+Official sources:
 - https://ads.tiktok.com/gateway/docs/index?doc_id=1735712062490625
 - https://ads.tiktok.com/gateway/docs/index?doc_id=1735713875563521
 - https://ads.tiktok.com/gateway/docs/index?doc_id=1769324038780930
+- https://www.postman.com/tiktok-business-api/tiktok-api-for-business/documentation/2c2o0ps/tiktok-api-for-business
 
-Still empirical:
-- artist-owned/native sound strategy;
-- exact account scopes and approval path;
-- insight fields/latency;
-- disclosure capabilities;
-- verified media-domain workflow in our environment.
+### What the TikTok adapter proves in software
+
+`TikTokProofAdapter`:
+
+- keeps the runtime access token out of dataclass `repr()` and sends it only in the `Access-Token` header;
+- inspects token scopes and the configured owned business account before publication;
+- probes video publishing settings and business-video access before marking software-level publish/metric support;
+- requires proof media to use HTTPS and match an operator-configured verified host or verified URL prefix;
+- validates URL-prefix host/path boundaries so lookalike hosts cannot pass the allowlist;
+- calls `/business/video/publish/` exactly once per proof attempt;
+- durably checkpoints the returned publish task ID before waiting for completion;
+- polls `/business/publish/status/` only within a bounded window;
+- treats request transport ambiguity, server errors, a missing publish task ID, and unresolved bounded polling as recovery-required rather than issuing a second publish call;
+- preserves raw status payloads and recognizes the known processing/completion/failure families used by the current API contract while failing closed on any unknown status;
+- treats an inbox-routed upload as failure for the public-publication proof rather than silently accepting it;
+- checkpoints a durable post ID immediately when status supplies one;
+- reconciles only from a durable post ID or publish task ID; it never searches by caption/title and never republishes automatically;
+- reads a known post through `/business/video/list/` and exposes a conservative proof-level metric map while preserving the raw platform response;
+- strips explicit credential-like fields and redacts the configured access token before raw platform evidence can be persisted.
+
+The configured verified host/prefix is only an operator claim until TikTok itself accepts the URL in a controlled proof. `can_use_verified_media_url` therefore remains `REQUIRES_PROOF` even when local validation passes.
+
+### TikTok remains empirical
+
+- real Accounts API authorization and approved scopes for the owned curation account/app;
+- the 2026 Accounts API Access Application outcome for our app;
+- TikTok acceptance of the configured verified media-domain or URL-prefix property;
+- the exact publish-status payload/state timing returned to our account;
+- artist-owned/native sound strategy and commercial-music attachment behavior;
+- synthetic-media disclosure capability for this exact API/account path;
+- exact post-insight fields and reporting latency;
+- a real controlled public post and raw metric retrieval.
 
 ## Promotion rule
 
