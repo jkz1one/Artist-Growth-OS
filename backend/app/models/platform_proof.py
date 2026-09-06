@@ -69,6 +69,7 @@ class PlatformProofRun(Base):
     platform_post_id: Mapped[str | None] = mapped_column(String(240))
     canonical_url: Mapped[str | None] = mapped_column(Text)
     last_error: Mapped[str | None] = mapped_column(Text)
+    remote_context: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

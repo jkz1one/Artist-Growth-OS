@@ -1,6 +1,6 @@
 # Platform proof harness
 
-The proof harness exists to turn platform/API assumptions into account-specific evidence before a real publisher adapter is trusted with autonomous work.
+The proof harness turns platform/API assumptions into account-specific evidence before a real publisher adapter is trusted with autonomous work.
 
 ## Contract
 
@@ -11,43 +11,65 @@ Each proof adapter implements four operations only:
 3. reconcile publication status without blindly publishing again;
 4. retrieve the raw post metrics actually exposed to that account/API path.
 
-Capability values are `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`, or `REQUIRES_PROOF`. Documentation can justify a proposed capability, but only an account-level proof should promote uncertain audio, disclosure, analytics, or native experiment behavior into a trusted capability snapshot.
+Multi-step adapters may emit **durable remote checkpoints** during operation 2. Checkpoints are not extra platform operations; they persist safe remote references (for example an Instagram container ID) so a crash at the public side-effect boundary can be reconciled instead of retried.
+
+Capability values are `SUPPORTED`, `UNSUPPORTED`, `UNKNOWN`, or `REQUIRES_PROOF`. Documentation can justify a proposed capability, but account behavior must still be captured by a controlled proof before the path is promoted to autonomous publication.
 
 ## Safety invariants
 
 - A proof run has a stable account-scoped `proof_key` and idempotency key.
 - Capability refresh is allowed only before the remote publication boundary; it cannot reopen a published run.
-- A post-remote database failure becomes `RECOVERY_REQUIRED`, never an automatic second publish.
+- Safe intermediate remote references are persisted in `remote_context` before irreversible platform calls when possible.
+- A post-remote database/transport ambiguity becomes `RECOVERY_REQUIRED`, never an automatic second publish.
 - Metrics failure returns the proof to `PUBLISHED`; metrics can be retried without reposting.
-- Proof evidence is rejected if it contains authorization headers, cookies, passwords, access/refresh tokens, client secrets, API keys, bearer strings, or credential-bearing URLs.
+- Proof evidence/checkpoints are rejected if they contain authorization headers, cookies, passwords, access/refresh tokens, client secrets, API keys, bearer strings, or credential-bearing URLs.
 - Proof events are append-only and sequence-unique per run.
 - Raw platform responses are evidence, not normalized product analytics. Normalization belongs to the later metrics layer.
 
-## Current official documentation findings (verified 2026-09-06)
+## Instagram — proof-only adapter implemented
 
-### Instagram
+The first real proof adapter targets the current **Instagram API with Instagram Login / Business Login for Instagram** path. It deliberately does not implement a production `Publisher` yet.
 
-Meta's official Instagram Postman workspace documents server-side Reels publishing for professional accounts: create a Reel media container from a `video_url`, poll the container `status_code`, then call `media_publish` and receive an Instagram media ID. The same official collection documents professional-account/media insights.
+Current official Meta documentation (verified 2026-09-06) says professional accounts can publish content through `graph.instagram.com`; the publishing path uses an Instagram User access token with `instagram_business_basic` and `instagram_business_content_publish`. Reels/video publishing creates a media container from a publicly accessible `video_url`, polls the container's `status_code`, and then calls `media_publish`. Meta documents `IN_PROGRESS`, `FINISHED`, `ERROR`, `EXPIRED`, and `PUBLISHED` container states and recommends polling about once per minute for no more than five minutes. The same current docs expose `/content_publishing_limit` and describe a 100 API-published-post rolling 24-hour limit for this publishing path.
 
-Sources:
+Insights are also documented for professional accounts. With Instagram Login, the current guide lists `instagram_business_basic` and `instagram_business_manage_insights`; media insights include Reel-relevant metrics such as views, reach, likes, comments, shares, saved, watch-time metrics, and skip rate where applicable to the media/account.
+
+Official sources:
 - https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api
 - https://www.postman.com/meta/instagram/folder/830j7my/reels-publishing
+- https://www.postman.com/meta/instagram/folder/23987686-f659d7d1-d74c-44e4-9192-9b1e8694c511
 
-Documented enough to build a proof adapter:
-- professional account authorization path;
-- remote video URL ingestion;
-- container processing status;
-- final media publication ID;
-- media/account insight APIs.
+### What the adapter proves
 
-Still empirical for Artist Growth OS:
-- exact native music/catalog attachment behavior for our curation accounts;
-- whether owned artist audio is treated as desired under the actual account/app configuration;
-- exact insight fields granted to our app/account;
-- Trial Reels/API exposure for our account;
-- synthetic-media disclosure fields supported by the chosen API path.
+`InstagramProofAdapter`:
 
-### TikTok
+- requires an explicit API version instead of hard-coding one;
+- keeps the access token only in runtime configuration and sends it via `Authorization: Bearer ...`;
+- requires proof media to be HTTPS and on a configured controlled-host allowlist;
+- probes the configured account, `/content_publishing_limit`, and account insights before marking publish/metric capabilities supported;
+- creates a `REELS` container from the public proof video URL;
+- durably checkpoints the container ID before final publication;
+- performs bounded status polling;
+- calls `media_publish` exactly once after `FINISHED`;
+- checkpoints the returned media ID immediately;
+- treats final-publish transport/5xx ambiguity as recovery-required;
+- reconciles a known media ID by reading the published media object/permalink;
+- if only a container is known, reads container status but never guesses a media ID or republishes automatically;
+- fetches a conservative media-insight set and preserves the raw response.
+
+### Still empirical / intentionally unimplemented
+
+- native Instagram music/catalog attachment;
+- artist-owned sound behavior versus baked audio;
+- Trial Reels API/account exposure;
+- synthetic-media disclosure fields for this exact API/account path;
+- the exact insight set returned to the real curation account;
+- real access-token/app-review behavior;
+- a real public proof post.
+
+These remain `UNKNOWN` or `REQUIRES_PROOF` until a controlled owned account demonstrates them.
+
+## TikTok
 
 TikTok API for Business documents the Organic API as the product for brands managing their organic TikTok presence. Its current reference includes public video publishing to an owned account, publishing-status lookup, account/post insights, and Discovery APIs. TikTok also requires video URLs used by the business publish endpoint to come from a verified URL property (with a documented test URL exception for testing).
 
@@ -65,7 +87,7 @@ Still empirical:
 - disclosure capabilities;
 - verified media-domain workflow in our environment.
 
-### YouTube
+## YouTube
 
 The YouTube Data API documents `videos.insert` for uploads and `videos.list` with `processingDetails` for owner-visible processing status. The video resource exposes status/statistics, and the YouTube Analytics API supplies authenticated analytics. Current documentation states that uploads from unverified API projects created after July 28, 2020 are private by default until the API project passes audit.
 
@@ -78,9 +100,9 @@ Sources:
 Still empirical:
 - Content ID behavior for artist-owned masters on a separate curation channel;
 - Shorts classification/processing behavior for our exact uploads;
-- analytics dimensions/latency that are available to the authenticated channel;
+- analytics dimensions/latency available to the authenticated channel;
 - synthetic-media metadata behavior in our exact app/account setup.
 
 ## Promotion rule
 
-A capability registry entry must preserve where its evidence came from. Documentation-derived assumptions remain `UNKNOWN`/`REQUIRES_PROOF` when account behavior can differ. A proof run becomes `PASSED` only after a controlled post has a durable platform ID/status and raw metrics have been retrieved without a second publication call.
+A capability registry entry preserves where its evidence came from. Documentation-derived assumptions remain `UNKNOWN`/`REQUIRES_PROOF` when account behavior can differ. A proof run becomes `PASSED` only after a controlled post has a durable platform ID/status and raw metrics have been retrieved without a second publication call.

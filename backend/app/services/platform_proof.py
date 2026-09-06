@@ -4,7 +4,11 @@ from uuid import UUID
 
 from app.domain.enums import CapabilitySupport, PlatformProofStatus, PublicationStatus
 from app.models.platform_proof import PlatformCapabilitySnapshot, PlatformProofRun
-from app.platforms.proof.base import PlatformProofAdapter, ProofPublishRequest
+from app.platforms.proof.base import (
+    AmbiguousRemotePublishError,
+    PlatformProofAdapter,
+    ProofPublishRequest,
+)
 from app.services.proof_security import UnsafeEvidenceError, ensure_safe_evidence
 from app.services.proof_store import ProofStore, utcnow
 
@@ -79,7 +83,9 @@ class PlatformProofHarness:
         with self.session_factory() as session:
             run, account = self.store.load_run_account(session, run_id)
             if run.status not in {PlatformProofStatus.CREATED, PlatformProofStatus.READY}:
-                raise ProofStateError("proof run crossed publication boundary during capability capture")
+                raise ProofStateError(
+                    "proof run crossed publication boundary during capability capture"
+                )
             snapshot = PlatformCapabilitySnapshot(
                 platform_account_id=account.id,
                 api_family=report.api_family,
@@ -125,9 +131,30 @@ class PlatformProofHarness:
                 idempotency_key=run.idempotency_key,
             )
 
+        def checkpoint(remote_context: dict[str, object]) -> None:
+            ensure_safe_evidence(remote_context)
+            with self.session_factory() as session:
+                current = session.get(PlatformProofRun, run_id)
+                if current is None:
+                    raise ProofError("proof run disappeared during remote checkpoint")
+                if current.status != PlatformProofStatus.PUBLISHING:
+                    raise ProofStateError("remote checkpoint arrived outside PUBLISHING")
+                current.remote_context = {**(current.remote_context or {}), **remote_context}
+                self.store.append_event(
+                    session, current.id, "REMOTE_CHECKPOINT", {"context": remote_context}
+                )
+                session.commit()
+
         try:
-            receipt = adapter.publish_controlled(external_account_id, request)
+            receipt = adapter.publish_controlled(
+                external_account_id, request, checkpoint=checkpoint
+            )
             ensure_safe_evidence(receipt.raw)
+        except AmbiguousRemotePublishError as exc:
+            if exc.remote_context:
+                self._merge_remote_context(run_id, exc.remote_context)
+            self._mark_recovery_required(run_id, f"remote publish is ambiguous: {exc}")
+            raise ProofRecoveryRequired("remote publication requires reconciliation") from exc
         except Exception as exc:
             self._mark_failed(run_id, f"remote publish failed before receipt: {exc}")
             raise
@@ -153,11 +180,13 @@ class PlatformProofHarness:
             external_account_id = account.external_account_id
             platform_post_id = run.platform_post_id
             idempotency_key = run.idempotency_key
+            remote_context = dict(run.remote_context or {})
 
         status = adapter.reconcile_publish(
             external_account_id,
             platform_post_id=platform_post_id,
             idempotency_key=idempotency_key,
+            remote_context=remote_context,
         )
         ensure_safe_evidence(status.raw)
 
@@ -251,6 +280,11 @@ class PlatformProofHarness:
             if run.status != PlatformProofStatus.PUBLISHING:
                 raise ProofStateError("receipt arrived for a proof run outside PUBLISHING")
             run.platform_post_id = receipt.platform_post_id
+            run.remote_context = {
+                **(run.remote_context or {}),
+                "media_id": receipt.platform_post_id,
+                "stage": "RECEIPT_PERSISTED",
+            }
             run.canonical_url = receipt.canonical_url
             run.published_at = receipt.published_at or utcnow()
             run.status = (
@@ -272,6 +306,18 @@ class PlatformProofHarness:
             session.refresh(run)
             session.expunge(run)
             return run
+
+    def _merge_remote_context(self, run_id: UUID, remote_context: dict[str, object]) -> None:
+        ensure_safe_evidence(remote_context)
+        with self.session_factory() as session:
+            run = session.get(PlatformProofRun, run_id)
+            if run is None:
+                return
+            run.remote_context = {**(run.remote_context or {}), **remote_context}
+            self.store.append_event(
+                session, run.id, "REMOTE_CONTEXT_RECOVERED", {"context": remote_context}
+            )
+            session.commit()
 
     def _mark_failed(self, run_id: UUID, error: str) -> None:
         with self.session_factory() as session:

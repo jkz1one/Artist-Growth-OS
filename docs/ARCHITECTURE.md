@@ -58,9 +58,14 @@ PlatformProofHarness
 - HTTP callers cannot choose render output paths; workers derive them under the configured render root.
 - Platform proofs are separate from production publication. Capability snapshots preserve uncertainty instead of converting documentation assumptions into booleans.
 - Proof capability refresh is pre-publication only. Once the remote boundary is crossed, the run cannot be reset to a publishable state.
+- Multi-step proof adapters durably checkpoint safe remote references in `PlatformProofRun.remote_context` before irreversible calls when possible.
 - A remote publish followed by a local persistence failure becomes `RECOVERY_REQUIRED`; the next action is reconciliation, not another upload.
 - Metrics can be retried independently of publication.
 - Tokens, authorization headers, cookies, secrets, passwords, API keys, and credential-bearing URLs are forbidden in persisted proof evidence/events.
+
+## Instagram proof adapter
+
+The first real proof-only adapter uses the Instagram API with Instagram Login. It is configured with an explicit Graph API version, an access token held only at runtime, and a controlled-media host allowlist. The adapter creates a Reel container, checkpoints the container ID, performs bounded status polling, calls `media_publish` once, checkpoints the media ID, reconciles via media/container reads, and fetches raw media insights. Any ambiguity after the final remote call is a recovery state, not a retry signal.
 
 ## Intentionally not implemented yet
 

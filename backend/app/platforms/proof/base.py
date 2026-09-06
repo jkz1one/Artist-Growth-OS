@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
 from app.domain.enums import CapabilitySupport, PublicationStatus
+
+
+class AmbiguousRemotePublishError(RuntimeError):
+    """Remote publication may have crossed the public side-effect boundary."""
+
+    def __init__(self, message: str, *, remote_context: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.remote_context = remote_context or {}
+
+
+ProofCheckpoint = Callable[[dict[str, Any]], None]
 
 
 @dataclass(frozen=True)
@@ -52,7 +64,11 @@ class PlatformProofAdapter(Protocol):
     def inspect_capabilities(self, external_account_id: str) -> CapabilityReport: ...
 
     def publish_controlled(
-        self, external_account_id: str, request: ProofPublishRequest
+        self,
+        external_account_id: str,
+        request: ProofPublishRequest,
+        *,
+        checkpoint: ProofCheckpoint | None = None,
     ) -> ProofPublishReceipt: ...
 
     def reconcile_publish(
@@ -61,6 +77,7 @@ class PlatformProofAdapter(Protocol):
         *,
         platform_post_id: str | None,
         idempotency_key: str,
+        remote_context: dict[str, Any] | None = None,
     ) -> ProofPostStatus: ...
 
     def fetch_metrics(
