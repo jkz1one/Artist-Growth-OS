@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -53,7 +53,7 @@ def test_enqueue_reuses_only_identical_payload(job_store: BackgroundJobStore) ->
 def test_expired_lease_can_be_reclaimed_but_stale_worker_cannot_commit(
     job_store: BackgroundJobStore,
 ) -> None:
-    now = datetime(2026, 9, 6, 16, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 6, 16, 0, tzinfo=UTC)
     job = job_store.enqueue(
         job_type="TEST",
         payload={"x": 1},
@@ -103,7 +103,7 @@ class AlwaysQuarantine:
 
 
 def test_worker_retry_is_delayed_and_bounded(job_store: BackgroundJobStore) -> None:
-    now = datetime(2026, 9, 6, 17, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 6, 17, 0, tzinfo=UTC)
     job = job_store.enqueue(
         job_type="TEST",
         payload={"x": 1},
@@ -131,7 +131,7 @@ def test_worker_retry_is_delayed_and_bounded(job_store: BackgroundJobStore) -> N
 
 
 def test_quarantined_job_is_not_automatically_retried(job_store: BackgroundJobStore) -> None:
-    now = datetime(2026, 9, 6, 18, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 6, 18, 0, tzinfo=UTC)
     job = job_store.enqueue(
         job_type="TEST",
         payload={"x": 1},
@@ -153,7 +153,7 @@ def test_quarantined_job_is_not_automatically_retried(job_store: BackgroundJobSt
 
 
 def test_expired_lease_cannot_commit_even_before_reclaim(job_store: BackgroundJobStore) -> None:
-    now = datetime(2026, 9, 6, 19, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 6, 19, 0, tzinfo=UTC)
     job = job_store.enqueue(
         job_type="TEST",
         payload={"x": 1},
@@ -173,7 +173,7 @@ def test_expired_lease_cannot_commit_even_before_reclaim(job_store: BackgroundJo
 
 
 def test_crash_reclaims_are_bounded_by_max_attempts(job_store: BackgroundJobStore) -> None:
-    now = datetime(2026, 9, 6, 20, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 6, 20, 0, tzinfo=UTC)
     job = job_store.enqueue(
         job_type="TEST",
         payload={"x": 1},
@@ -192,7 +192,7 @@ def test_crash_reclaims_are_bounded_by_max_attempts(job_store: BackgroundJobStor
 
 
 def test_specialized_worker_does_not_sweep_other_job_types(job_store: BackgroundJobStore) -> None:
-    now = datetime(2026, 9, 6, 21, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 6, 21, 0, tzinfo=UTC)
     other = job_store.enqueue(
         job_type="OTHER",
         payload={"x": 1},

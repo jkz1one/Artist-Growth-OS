@@ -1,1 +1,1 @@
-from app.platforms.proof.base import *  # noqa: F403
+from app.platforms.proof.base import *

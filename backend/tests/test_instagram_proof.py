@@ -18,7 +18,6 @@ from app.platforms.proof.instagram import (
 )
 from app.services.platform_proof import PlatformProofHarness, ProofRecoveryRequired, ProofStateError
 
-
 TOKEN = "secret-token-value"
 ACCOUNT = "ig123"
 

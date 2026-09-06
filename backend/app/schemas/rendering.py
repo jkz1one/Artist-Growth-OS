@@ -13,7 +13,7 @@ class SourceClip(BaseModel):
     end_ms: int
 
     @model_validator(mode="after")
-    def validate_window(self) -> "SourceClip":
+    def validate_window(self) -> SourceClip:
         if self.start_ms < 0 or self.end_ms <= self.start_ms:
             raise ValueError("invalid source clip window")
         return self
@@ -25,7 +25,7 @@ class AudioSlice(BaseModel):
     end_ms: int
 
     @model_validator(mode="after")
-    def validate_window(self) -> "AudioSlice":
+    def validate_window(self) -> AudioSlice:
         if self.start_ms < 0 or self.end_ms <= self.start_ms:
             raise ValueError("invalid audio window")
         return self
@@ -41,7 +41,7 @@ class DeterministicRenderPlan(BaseModel):
     duration_ms: int = Field(gt=0, le=60_000)
 
     @model_validator(mode="after")
-    def validate_duration(self) -> "DeterministicRenderPlan":
+    def validate_duration(self) -> DeterministicRenderPlan:
         if self.video.end_ms - self.video.start_ms < self.duration_ms:
             raise ValueError("video source window shorter than render duration")
         if self.audio and self.audio.end_ms - self.audio.start_ms < self.duration_ms:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.domain.enums import CapabilitySupport, PublicationStatus
 from app.platforms.proof.base import (
@@ -54,7 +54,7 @@ class FakePlatformProofAdapter:
             platform_post_id=post_id,
             status=PublicationStatus.PUBLISHED,
             canonical_url=f"https://fake.publisher.local/posts/{post_id}",
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
             raw={"post_id": post_id},
         )
         self._posts[request.idempotency_key] = receipt

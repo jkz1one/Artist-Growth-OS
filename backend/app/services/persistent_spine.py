@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.enums import CandidateStatus, DecisionStatus, PublicationStatus
 from app.models.spine import Publication, Render
-from app.platforms.base import PublishRequest, Publisher
+from app.platforms.base import Publisher, PublishRequest
 from app.rendering.ffmpeg import FFmpegRenderer
 from app.rendering.qc import MediaQC
 from app.schemas.rendering import DeterministicRenderPlan
