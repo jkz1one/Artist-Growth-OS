@@ -1,66 +1,39 @@
 # Implementation status
 
-## Completed in first coding increment
+## Completed foundation increments
 
-- Standalone modular-monolith scaffold
-- FastAPI application shell and health route
-- SQLAlchemy Phase-1 persistence model
-- Alembic initial migration
-- Structured deterministic RenderPlan
-- FFmpeg H.264/AAC renderer
-- ffprobe technical QC
-- Fail-closed rights engine with CLEAR / RESTRICTED / UNKNOWN / EXPIRED semantics
-- Minimal fail-closed policy-classification gate
-- Exact-plan distinctness guard
-- Publisher protocol
-- Idempotent FakePublisher
-- End-to-end fake publication spine tests
-- Next.js control-plane shell with no invented performance data
-- PostgreSQL local Docker service
+- Standalone modular-monolith scaffold, deterministic FFmpeg renderer/QC, fail-closed rights/policy/distinctness gates, Publisher protocol, FakePublisher, and Next.js control-plane shell.
+- Transactional publication spine with persisted gate decisions, render/publication uniqueness, durable PublicationAttempt rows, source-lineage verification, restart-safe published-result reuse, and fail-closed ambiguous delivery recovery.
+- DB-backed BackgroundJob execution with payload hashes, attempt budgets, scheduling, lease owner/token/expiry, PostgreSQL `FOR UPDATE SKIP LOCKED`, stale-worker rejection, bounded crash/retry loops, worker-owned render paths, API enqueue/status endpoints, and quarantine of ambiguous publication recovery.
 
-## Completed in transactional persistence increment
+## Platform-proof harness increment
 
-- Candidate can exist before render so rejected candidates retain lineage and gate decisions
-- Immutable/versioned RightsDecision, PolicyDecision, and DistinctnessDecision rows
-- Render uniqueness by RenderPlan + artifact SHA
-- Durable Publication reservation with candidate/platform and platform/idempotency uniqueness
-- Durable PublicationAttempt rows
-- Restart-safe published-result reuse without a second publisher call
-- Fail-closed handling for ambiguous UPLOADING / PROCESSING states
-- Rights evidence loaded from persisted RightsGrant rows
-- Source-lineage verification prevents cross-artist concept/audio/track/asset mixing before candidate creation
-- Persisted rejected-rights decision before FFmpeg is allowed to run
-
-## Completed in durable job/control-boundary increment
-
-- BackgroundJob persistence with payload hash, attempt budget, next-attempt time, lease owner/token/expiry, result, and terminal error state
-- Idempotent enqueue keyed by job type + command idempotency key
-- Publication job idempotency is derived from candidate + target platform; callers cannot bypass dedupe with a different request key
-- Payload mismatch for the same candidate/platform command fails with HTTP 409
-- PostgreSQL claim path uses `FOR UPDATE SKIP LOCKED`; SQLite remains a compatibility-test path
-- Expired worker leases are reclaimable while attempt budget remains
-- Expired/stale lease tokens cannot commit, retry, fail, quarantine, or renew a job
-- Crash/reclaim loops are bounded by max attempts
-- Generic durable worker supports success, retryable failure, terminal failure, and quarantine
-- Publication job handler resolves the persisted RenderPlan and owns the output path
-- FastAPI `POST /v1/jobs/publication` enqueues work without running FFmpeg/platform calls in the request
-- FastAPI `GET /v1/jobs/{job_id}` exposes durable job state for the future dashboard
-- Ambiguous publication recovery is converted to QUARANTINED job state instead of an automatic repost
+- `PlatformAccount` records platform/account/API-family identity without coupling it to Artist.
+- `PlatformCapabilitySnapshot` stores account-specific capability evidence using `SUPPORTED` / `UNSUPPORTED` / `UNKNOWN` / `REQUIRES_PROOF`.
+- `PlatformProofRun` models one controlled proof with stable account-scoped idempotency.
+- Append-only `PlatformProofEvent` rows make the proof sequence inspectable.
+- Provider-neutral `PlatformProofAdapter` exposes only capability inspection, controlled publish, status reconciliation, and raw metric retrieval.
+- Fake proof adapter exercises the full contract without pretending to prove a real platform.
+- Capability capture cannot reset a run after the remote publish boundary.
+- Failure after remote acceptance but before receipt persistence becomes `RECOVERY_REQUIRED`.
+- Metric collection failure leaves the durable post published and retryable without reposting.
+- Credential-bearing proof evidence fails closed before persistence.
+- Current platform research is recorded in `docs/PLATFORM_PROOF.md`; native audio/catalog behavior remains empirical rather than assumed.
 
 ## Evidence
 
-- Backend test suite: 20 passed
-- Python compileall: passed
-- Alembic full chain: upgrade → downgrade base → upgrade succeeded using a SQLite compatibility database
-- Post-migration inspection confirms `background_jobs`, claim index, and `(job_type, idempotency_key)` uniqueness
-- Focused tests cover enqueue idempotency, command conflict, lease expiry/reclaim, stale-worker rejection, bounded retry, bounded crash recovery, quarantine, status inspection, rejection of caller-controlled output paths, worker-owned render paths, and publication-recovery quarantine
-- Ruff is declared as a dev dependency but is not installed in the execution environment, so lint has not yet been executed here
-- Frontend source scaffold exists, but dependency installation/build remains unverified in this execution environment
+- Proof-harness compatibility workspace: 20 tests passed (8 original Phase-1 tests + 12 focused proof-harness tests).
+- Python compileall: passed.
+- Alembic full chain through `e5b7c2d3410a`: upgrade → downgrade base → upgrade passed on the SQLite compatibility database.
+- Schema inspection confirmed proof-run uniqueness `(platform_account_id, proof_key)` and proof-event uniqueness `(proof_run_id, sequence)`.
+- PR #2's merged durable-job increment independently had 20 backend tests passing before merge.
+- Ruff remains declared but unavailable in the execution environment, so lint is not claimed as executed.
+- Frontend dependency installation/build remains unverified in this execution environment.
 
 ## Current safety invariant
 
-A publication in an ambiguous remote-delivery state is never blindly retried. If the process restarts while a Publication is UPLOADING or PROCESSING, the publication spine requires reconciliation; the durable job layer converts that state into QUARANTINED rather than creating an automatic repost loop.
+No real social adapter is production-ready merely because official documentation describes an endpoint. A real path must pass an account-level proof: capability capture → one controlled publish → durable platform ID/status reconciliation → raw metrics retrieval. Any ambiguous remote-delivery state fails closed rather than reposting.
 
 ## Next engineering increment
 
-Add the platform-proof harness without yet committing to a production adapter: capability/proof records, adapter contract tests, and a controlled one-post proof CLI/path that can publish, poll status, and retrieve the metrics actually exposed by a current official API. Verify official documentation immediately before coding each real platform path.
+Implement the first real **proof-only** adapter for Instagram professional accounts using the currently documented Reels container → status → `media_publish` flow and media insights. Keep credentials outside proof/audit payloads, keep native music/Trial Reels/disclosure capabilities `UNKNOWN` or `REQUIRES_PROOF`, and do not promote the adapter to autonomous publishing until a real owned account passes the proof contract end to end.
