@@ -35,7 +35,8 @@ PublicationSpine
     ├── FoundationPolicyEngine
     ├── FoundationDistinctnessEngine
     ├── FFmpegRenderer → MediaQC
-    └── Publisher protocol → FakePublisher / future real adapters
+    ├── Publisher protocol → FakePublisher / future real adapters
+    └── PersistentPublicationSpine → SQLAlchemy durable lineage + publication reservation
 ```
 
 ## Current safety behavior
@@ -44,7 +45,9 @@ PublicationSpine
 - Policy: a structured classification is required; absence is UNKNOWN and blocks.
 - Distinctness: exact RenderPlan duplicates block; richer perceptual/semantic comparison is deferred.
 - QC: validates playable media, H.264 video, expected resolution, positive duration, and AAC when audio is expected.
-- Publishing: idempotency key derives from candidate + platform + rendered bytes; FakePublisher returns the same remote identity on retry.
+- Publishing: idempotency key derives from candidate + platform + rendered bytes; database uniqueness also enforces one publication per candidate/platform.
+- Restart safety: PUBLISHED work is reused from the database; ambiguous UPLOADING/PROCESSING work requires reconciliation and is never blindly resubmitted.
+- Decision lineage: rights, policy, and distinctness decisions are versioned rows and are persisted even when a candidate is rejected before render.
 
 ## Intentionally not implemented yet
 
