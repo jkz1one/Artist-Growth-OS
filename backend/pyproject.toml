@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 artist-growth-worker = "app.workers.main:main"
+artist-growth-instagram-proof = "app.proofs.instagram_runner:main"
 
 [project.optional-dependencies]
 dev = [
