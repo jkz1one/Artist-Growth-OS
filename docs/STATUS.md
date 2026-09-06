@@ -7,6 +7,7 @@
 - DB-backed BackgroundJob execution with payload hashes, attempt budgets, scheduling, lease owner/token/expiry, PostgreSQL `FOR UPDATE SKIP LOCKED`, stale-worker rejection, bounded crash/retry loops, worker-owned render paths, API enqueue/status endpoints, and quarantine of ambiguous publication recovery.
 - Empirical platform-proof harness with PlatformAccount, capability snapshots, proof runs/events, credential-safe evidence, controlled publish/reconcile/metrics contract, and fake adapter.
 - Repository backend CI gate with installability, Ruff, compileall, pytest, SQLite migration round-trip, and PostgreSQL 17 migration round-trip.
+- Proof-only adapter contracts for Instagram, YouTube, and TikTok, all behind the same platform-proof harness and barred from autonomous publication until real owned-account evidence exists.
 
 ## Remote validation baseline
 
@@ -15,13 +16,26 @@ PR #6 established the first repository-level backend gate and then passed again 
 - Editable backend package install: passed.
 - Ruff: passed.
 - Python compileall: passed.
-- Full backend suite on the PR baseline: **58 tests passed**.
+- Full backend suite on the PR #6 baseline: **58 tests passed**.
 - Alembic full chain through `f6a1d9e240bc`: SQLite `upgrade -> downgrade base -> upgrade` passed.
 - The same Alembic chain: PostgreSQL 17 `upgrade -> downgrade base -> upgrade` passed.
 - Final workflow permissions are read-only (`contents: read`).
-- Frontend dependency installation/build remains unverified in this execution environment and is not covered by the backend workflow yet.
 
-The GitHub Actions workflow is now the authoritative acceptance gate for backend changes; local compatibility-workspace counts from earlier increments are historical evidence only.
+PR #7 added the YouTube proof-only adapter without changing schema or production publishing authority.
+
+- Exact PR head `865decd4082ab0ecf6274254e9850b8548252d41`: **71 tests passed**.
+- Ruff and compileall: passed.
+- SQLite and PostgreSQL 17 full migration round-trips: passed.
+- Post-merge `main` run on `2ef1313600f0c6a5324bcc083958795dccdf79c9`: passed the complete backend gate.
+
+PR #8 adds the TikTok proof-only adapter without changing schema, dependencies, operator publication commands, or production publishing authority.
+
+- Initial code head `71647709a848a65be566b6914d541a5b06844a82`: **88 tests passed**.
+- Ruff and compileall: passed.
+- SQLite and PostgreSQL 17 full migration round-trips: passed.
+- Workflow token remained read-only (`contents: read`).
+
+The GitHub Actions workflow is now the authoritative acceptance gate for backend changes; local compatibility-workspace counts from earlier increments are historical evidence only. Frontend dependency installation/build remains unverified and is not covered by the backend workflow yet.
 
 ## Instagram proof-only adapter
 
@@ -63,10 +77,30 @@ The second real proof adapter exercises a materially different platform shape wi
 - Native/catalog music attachment is not provided by this Data API adapter; baked audio is the current proof path.
 - Shorts classification, Content ID behavior, public visibility, exact analytics latency/fields, and live upload authorization remain empirical.
 
+## TikTok proof-only adapter
+
+The third real proof adapter exercises the TikTok API for Business Organic Accounts path without adding a production Publisher or making a live call.
+
+- Uses the current `business-api.tiktok.com/open_api/v1.3` Accounts API family.
+- Keeps the access token out of durable evidence and config representation and sends it only in the `Access-Token` header.
+- Captures token-scope, owned-account profile, video-settings, and business-video capability evidence.
+- Requires proof video URLs to be HTTPS and inside operator-configured TikTok verified-domain or verified-URL-prefix boundaries.
+- Local URL validation does not claim the property is verified by TikTok; that capability remains `REQUIRES_PROOF` until the platform accepts it.
+- Calls `/business/video/publish/` exactly once per proof attempt and durably checkpoints its publish task ID.
+- Polls `/business/publish/status/` within a bounded window, preserves raw responses, and fails closed on unknown platform states.
+- Request ambiguity, server errors, missing publish IDs, unresolved polling, and post-ID checkpoint failures become recovery states rather than a second publish call.
+- Reconciliation uses only durable post/publish IDs and never caption/title search or automatic re-publication.
+- `/business/video/list/` supplies proof-level post metrics while preserving the raw platform response.
+- Native/owned sound, commercial-music attachment, synthetic-media disclosure, exact metrics latency, real approval/scopes, and real verified-property behavior remain empirical.
+
 ## Current safety invariant
 
-No real social adapter is production-ready merely because official documentation describes an endpoint or mocked contract tests pass. Instagram and YouTube remain proof-only. Autonomous publication stays barred until an owned account completes capability capture -> one controlled publication -> durable platform ID/status reconciliation -> raw metrics, with no blind second publication call.
+No real social adapter is production-ready merely because official documentation describes an endpoint or mocked contract tests pass. Instagram, YouTube, and TikTok remain proof-only. Autonomous publication stays barred until an owned account completes capability capture -> one controlled publication -> durable platform ID/status reconciliation -> raw metrics, with no blind second publication call.
 
 ## Next engineering increment
 
-Software can continue without pretending the environmental proof is complete, but the promotion gate does not move: the first platform to become a production Publisher must pass a real owned-account proof. Instagram remains the most prepared path because its guarded operator runner already exists. YouTube now provides a second adapter contract for validating that platform-proof abstractions remain platform-independent before dashboard work depends on them.
+The platform-proof abstraction has now been exercised against three materially different official API shapes. Software should stop adding platforms for its own sake.
+
+The next software slice should make proof execution consistent and inspectable without weakening the live-publication boundary: extract the guarded Instagram operator pattern into a reusable platform-proof operator layer, keep all live `publish` actions behind explicit platform-specific enablement and confirmation, and expose database-only run/status inspection that can later feed the control-plane dashboard. Instagram remains the first candidate for an empirical proof because its guarded runner is already operationally documented.
+
+The promotion gate still does not move: no platform becomes a production `Publisher` until a real owned-account proof passes. Trend Radar, autonomous creative generation, allocation learning, and broad dashboard work remain downstream of this foundation.
