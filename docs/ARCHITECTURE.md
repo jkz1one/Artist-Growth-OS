@@ -11,11 +11,11 @@ artist-growth-os/
 │   │   ├── api/             # HTTP command/status boundary
 │   │   ├── db/              # SQLAlchemy base/session
 │   │   ├── domain/          # shared enums/value language
-│   │   ├── models/          # persistence models
-│   │   ├── platforms/       # Publisher adapters
+│   │   ├── models/          # persistence + proof evidence
+│   │   ├── platforms/       # Publisher + platform-proof adapter contracts
 │   │   ├── rendering/       # FFmpeg + QC
 │   │   ├── schemas/         # validated render/job contracts
-│   │   ├── services/        # rights/policy/distinctness/spine/jobs
+│   │   ├── services/        # rights/policy/distinctness/spine/jobs/proofs
 │   │   └── workers/         # DB-backed durable job execution
 │   ├── alembic/             # durable schema migrations
 │   └── tests/               # closed-loop acceptance tests
@@ -29,37 +29,39 @@ artist-growth-os/
 HTTP enqueues durable commands; it does not perform FFmpeg or platform work inline. Workers lease jobs from PostgreSQL and call application services. Application services depend on domain contracts and adapter interfaces. Platform adapters and persistence implement those contracts. Domain logic must not import a social SDK.
 
 ```text
-HTTP command
+HTTP command → BackgroundJob → DurableWorker → PublicationJobHandler
+                                             ↓
+                                PersistentPublicationSpine
+                                  ├─ rights / policy / distinctness
+                                  ├─ FFmpeg → QC
+                                  └─ Publisher protocol
+
+Controlled platform proof
     ↓
-BackgroundJob
-    ↓ lease/token
-DurableWorker
-    ↓
-PublicationJobHandler
-    ↓
-PersistentPublicationSpine
-    ├── RightsEngine
-    ├── FoundationPolicyEngine
-    ├── FoundationDistinctnessEngine
-    ├── FFmpegRenderer → MediaQC
-    └── Publisher protocol → FakePublisher / future real adapters
+PlatformProofHarness
+    ├─ PlatformAccount
+    ├─ PlatformCapabilitySnapshot
+    ├─ PlatformProofRun + append-only events
+    └─ PlatformProofAdapter
+         ├─ inspect capabilities
+         ├─ one controlled publish
+         ├─ reconcile status
+         └─ retrieve raw metrics
 ```
 
 ## Current safety behavior
 
-- Rights: required evidence must be currently effective and CLEAR.
-- Policy: a structured classification is required; absence is UNKNOWN and blocks.
-- Distinctness: exact RenderPlan duplicates block; richer perceptual/semantic comparison is deferred.
-- QC: validates playable media, H.264 video, expected resolution, positive duration, and AAC when audio is expected.
-- Publishing: idempotency key derives from candidate + platform + rendered bytes; database uniqueness also enforces one publication per candidate/platform.
-- Restart safety: PUBLISHED work is reused from the database; ambiguous UPLOADING/PROCESSING work requires reconciliation and is never blindly resubmitted.
-- Decision lineage: rights, policy, and distinctness decisions are versioned rows and are persisted even when a candidate is rejected before render.
-- Job enqueue: `(job_type, idempotency_key)` is unique and may be reused only when the command payload hash is identical. Publication job keys are derived from candidate + target platform, not caller-controlled.
-- Job ownership: leases have opaque tokens. Expired/stale workers cannot commit results, even before another worker reclaims the job.
-- Crash recovery: expired RUNNING jobs are reclaimable only while attempt budget remains. Exhausted crash loops become FAILED.
-- Retry safety: retries are delayed and bounded. QUARANTINED jobs are never automatically retried.
-- Filesystem boundary: HTTP callers cannot select render output paths; workers derive publication artifact paths under the configured render root.
+- Required rights evidence must be currently effective and `CLEAR`; policy classification is required; exact RenderPlan duplicates block; technical QC validates playable target media.
+- Publication idempotency derives from immutable candidate/platform/render identity and is enforced by database uniqueness.
+- `PUBLISHED` work is reused; ambiguous `UPLOADING`/`PROCESSING` work requires reconciliation and is never blindly resubmitted.
+- Background jobs use payload-hash idempotency, opaque lease tokens, bounded attempts, delayed retry, and quarantine. Expired/stale workers cannot commit results.
+- HTTP callers cannot choose render output paths; workers derive them under the configured render root.
+- Platform proofs are separate from production publication. Capability snapshots preserve uncertainty instead of converting documentation assumptions into booleans.
+- Proof capability refresh is pre-publication only. Once the remote boundary is crossed, the run cannot be reset to a publishable state.
+- A remote publish followed by a local persistence failure becomes `RECOVERY_REQUIRED`; the next action is reconciliation, not another upload.
+- Metrics can be retried independently of publication.
+- Tokens, authorization headers, cookies, secrets, passwords, API keys, and credential-bearing URLs are forbidden in persisted proof evidence/events.
 
 ## Intentionally not implemented yet
 
-No Trend Radar, scraping, headless publishing, engagement automation, ML optimizer, contextual bandit, production OAuth, or real social platform adapter is present in Phase 1.
+No production Instagram/TikTok/YouTube publisher, autonomous platform OAuth, Trend Radar, scraping, headless publishing, engagement automation, ML optimizer, or contextual bandit is present. The next adapters are proof-only until their real accounts pass controlled publication/status/metrics checks.
