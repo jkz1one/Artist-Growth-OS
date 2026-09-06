@@ -10,16 +10,13 @@ from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from app.domain.enums import PlatformProofStatus
 from app.platforms.proof.instagram import InstagramProofAdapter, InstagramProofConfig
+from app.proofs.operator import (
+    LIVE_PUBLISH_CONFIRMATION,
+    OperatorConfigError,
+    PlatformProofOperator,
+)
 from app.services.platform_proof import PlatformProofHarness
-from app.services.proof_security import ensure_safe_evidence
-
-LIVE_PUBLISH_CONFIRMATION = "I_UNDERSTAND_THIS_WILL_POST_PUBLICLY"
-
-
-class OperatorConfigError(RuntimeError):
-    pass
 
 
 @dataclass(frozen=True)
@@ -67,10 +64,27 @@ class InstagramOperatorConfig:
         )
 
 
-class InstagramProofOperator:
-    def __init__(self, harness: PlatformProofHarness, adapter: InstagramProofAdapter | None) -> None:
-        self.harness = harness
-        self.adapter = adapter
+def _validate_instagram_media_url(media_url: str) -> None:
+    parsed_media_url = urlsplit(media_url)
+    if parsed_media_url.query or parsed_media_url.fragment:
+        raise ValueError(
+            "proof media URL must be a stable public URL without query string or fragment"
+        )
+
+
+class InstagramProofOperator(PlatformProofOperator):
+    def __init__(
+        self,
+        harness: PlatformProofHarness,
+        adapter: InstagramProofAdapter | None,
+    ) -> None:
+        super().__init__(
+            harness,
+            adapter,
+            platform_label="Instagram",
+            live_publish_enabled=True,
+            media_validator=_validate_instagram_media_url,
+        )
 
     def start(
         self,
@@ -82,87 +96,14 @@ class InstagramProofOperator:
         display_name: str | None = None,
         account_type: str | None = None,
     ) -> dict[str, Any]:
-        adapter = self._require_adapter()
-        ensure_safe_evidence(
-            {"proof_key": proof_key, "media_url": media_url, "caption": caption},
-            path="operator_input",
-        )
-        parsed_media_url = urlsplit(media_url)
-        if parsed_media_url.query or parsed_media_url.fragment:
-            raise ValueError(
-                "proof media URL must be a stable public URL without query string or fragment"
-            )
-        account = self.harness.create_account(
-            platform=adapter.platform,
+        return super().start(
             external_account_id=external_account_id,
-            api_family=adapter.api_family,
-            display_name=display_name,
-            account_type=account_type,
-        )
-        run = self.harness.start_run(
-            platform_account_id=account.id,
             proof_key=proof_key,
             media_uri=media_url,
             caption=caption,
+            display_name=display_name,
+            account_type=account_type,
         )
-        snapshot = self.harness.capture_capabilities(run.id, adapter)
-        refreshed = self.harness.get_run(run.id)
-        return {
-            "action": "STARTED_NO_PUBLISH",
-            "run": self._run_summary(refreshed),
-            "capability_snapshot_id": str(snapshot.id),
-            "capabilities": dict(snapshot.capabilities),
-        }
-
-    def publish(self, *, run_id: UUID, confirmation: str) -> dict[str, Any]:
-        if confirmation != LIVE_PUBLISH_CONFIRMATION:
-            raise PermissionError(
-                "live publish blocked: pass the exact confirmation phrase "
-                f"{LIVE_PUBLISH_CONFIRMATION!r}"
-            )
-        adapter = self._require_adapter()
-        run = self.harness.publish_once(run_id, adapter)
-        return {"action": "LIVE_PUBLISH_REQUESTED", "run": self._run_summary(run)}
-
-    def reconcile(self, *, run_id: UUID) -> dict[str, Any]:
-        adapter = self._require_adapter()
-        run = self.harness.reconcile(run_id, adapter)
-        return {"action": "RECONCILED", "run": self._run_summary(run)}
-
-    def metrics(self, *, run_id: UUID) -> dict[str, Any]:
-        adapter = self._require_adapter()
-        run = self.harness.collect_metrics(run_id, adapter)
-        return {"action": "METRICS_CAPTURED", "run": self._run_summary(run)}
-
-    def show(self, *, run_id: UUID) -> dict[str, Any]:
-        run = self.harness.get_run(run_id)
-        return {"action": "SHOW", "run": self._run_summary(run)}
-
-    def _require_adapter(self) -> InstagramProofAdapter:
-        if self.adapter is None:
-            raise OperatorConfigError("this command requires Instagram proof runtime credentials")
-        return self.adapter
-
-    @staticmethod
-    def _run_summary(run) -> dict[str, Any]:
-        status = run.status.value if isinstance(run.status, PlatformProofStatus) else str(run.status)
-        data = {
-            "id": str(run.id),
-            "platform_account_id": str(run.platform_account_id),
-            "proof_key": run.proof_key,
-            "status": status,
-            "media_uri": run.media_uri,
-            "platform_post_id": run.platform_post_id,
-            "canonical_url": run.canonical_url,
-            "last_error": run.last_error,
-            "remote_context": dict(run.remote_context or {}),
-            "result": run.result_json,
-            "created_at": run.created_at.isoformat() if run.created_at else None,
-            "published_at": run.published_at.isoformat() if run.published_at else None,
-            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-        }
-        ensure_safe_evidence(data)
-        return data
 
 
 def build_parser() -> argparse.ArgumentParser:
