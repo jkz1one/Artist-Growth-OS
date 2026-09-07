@@ -1,4 +1,7 @@
 import { controlPlaneFixture } from "../lib/control-plane";
+import { loadProofReadModel } from "../lib/control-plane-api";
+
+export const dynamic = "force-dynamic";
 
 const nav = [
   "COMMAND",
@@ -16,8 +19,22 @@ function statusLabel(status: "GUARDED_RUNNER" | "PROOF_ONLY") {
   return status === "GUARDED_RUNNER" ? "GUARDED RUNNER" : "PROOF ONLY";
 }
 
-export default function Home() {
+function formatProofTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "UNKNOWN TIME";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+export default async function Home() {
   const data = controlPlaneFixture;
+  const proofRead = await loadProofReadModel();
 
   return (
     <main className="shell">
@@ -45,11 +62,15 @@ export default function Home() {
           <h1>Growth control plane.</h1>
           <p className="lede">
             The operating surface for creative lineage, publication proofs, platform readiness,
-            and system safety. No live social credentials are loaded by this view.
+            and system safety. Platform credentials never enter browser JavaScript.
           </p>
           <div className="sourceNote">
-            <span>DATA SOURCE</span>
+            <span>SOFTWARE FACTS</span>
             <strong>{data.source}</strong>
+          </div>
+          <div className={`sourceNote proofSource ${proofRead.state.toLowerCase()}`}>
+            <span>PROOF STATE</span>
+            <strong>{proofRead.source}</strong>
           </div>
         </header>
 
@@ -74,6 +95,60 @@ export default function Home() {
               </article>
             ))}
           </div>
+        </section>
+
+        <section className="sectionBlock" aria-labelledby="durable-proofs">
+          <div className="sectionHeading compact">
+            <div>
+              <p className="eyebrow">DURABLE PROOF RUNS</p>
+              <h2 id="durable-proofs">Owned-account evidence, not assumptions.</h2>
+            </div>
+            <div className={`connectionBadge ${proofRead.state.toLowerCase()}`}>
+              {proofRead.state.replaceAll("_", " ")}
+            </div>
+          </div>
+
+          {proofRead.state === "CONNECTED" ? (
+            proofRead.proofs.length > 0 ? (
+              <div className="proofRunGrid">
+                {proofRead.proofs.map((proof) => (
+                  <article className="proofRunCard" key={proof.id}>
+                    <div className="platformTopline">
+                      <div>
+                        <span className="label">{proof.platform}</span>
+                        <h3>{proof.displayName || proof.proofKey}</h3>
+                      </div>
+                      <span className="runStatus">{proof.status}</span>
+                    </div>
+                    <p className="proofKey">{proof.proofKey}</p>
+                    <div className="attentionBox">
+                      <span className="label">ATTENTION</span>
+                      <strong>{proof.attentionState.replaceAll("_", " ")}</strong>
+                      <p>{proof.attentionReason}</p>
+                    </div>
+                    <div className="proofRunMeta">
+                      <span>{formatProofTime(proof.createdAt)}</span>
+                      <span>{proof.accountActive ? "ACCOUNT ACTIVE" : "HISTORICAL ACCOUNT"}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="emptyProofState">
+                <strong>Authenticated proof store connected.</strong>
+                <p>No durable proof runs exist yet. Nothing is synthesized to fill the empty state.</p>
+              </div>
+            )
+          ) : (
+            <div className="emptyProofState degraded">
+              <strong>Live proof state is not available.</strong>
+              <p>
+                The dashboard is staying on repository-backed software facts only. Configure the
+                server-side API URL and control-plane read token, or restore backend availability;
+                no fallback proof records will be invented.
+              </p>
+            </div>
+          )}
         </section>
 
         <section className="sectionBlock" aria-labelledby="platform-proofs">

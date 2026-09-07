@@ -111,6 +111,9 @@ h3 { margin: 0; font-size: 25px; letter-spacing: -.03em; font-weight: 620; }
   letter-spacing: .12em;
 }
 .sourceNote strong { color: #aeb4b0; font-weight: 500; letter-spacing: .04em; }
+.proofSource { margin-left: 7px; }
+.proofSource.connected { border-color: #536057; }
+.proofSource.auth_failed, .proofSource.invalid_response { border-color: #6d5b55; }
 
 .sectionBlock { padding: 48px 0; border-bottom: 1px solid #242828; }
 .sectionHeading { margin-bottom: 22px; }
@@ -134,6 +137,30 @@ h3 { margin: 0; font-size: 25px; letter-spacing: -.03em; font-weight: 620; }
 .factCard.guarded::after { background: #99967e; }
 .factCard strong { display: block; margin: 24px 0 12px; font-size: 20px; letter-spacing: -.02em; }
 .factCard p { margin: 0; color: #8f9692; font-size: 13px; line-height: 1.55; }
+
+.connectionBadge {
+  border: 1px solid #343a37;
+  padding: 9px 11px;
+  color: #8f9692;
+  font-size: 8px;
+  letter-spacing: .12em;
+  white-space: nowrap;
+}
+.connectionBadge.connected { border-color: #617066; color: #bac4bd; }
+.connectionBadge.auth_failed, .connectionBadge.invalid_response { border-color: #765e56; color: #c0aaa2; }
+.proofRunGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.proofRunCard { border: 1px solid #2d3230; background: rgba(15, 18, 18, .76); padding: 20px; min-height: 270px; }
+.proofRunCard h3 { margin-top: 8px; font-size: 20px; }
+.runStatus { border: 1px solid #3b423e; color: #aeb6b0; padding: 6px 8px; font-size: 8px; letter-spacing: .1em; }
+.proofKey { color: #6f7773; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; margin: 15px 0 24px; overflow-wrap: anywhere; }
+.attentionBox { border-top: 1px solid #292e2c; padding-top: 17px; }
+.attentionBox strong { display: block; margin: 9px 0 8px; font-size: 13px; letter-spacing: .04em; }
+.attentionBox p { margin: 0; color: #868e89; font-size: 12px; line-height: 1.55; }
+.proofRunMeta { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; color: #656d69; font-size: 8px; letter-spacing: .08em; }
+.emptyProofState { border: 1px solid #303633; background: rgba(15, 18, 17, .65); padding: 24px; }
+.emptyProofState strong { display: block; font-size: 16px; }
+.emptyProofState p { margin: 9px 0 0; max-width: 720px; color: #89908c; font-size: 13px; line-height: 1.6; }
+.emptyProofState.degraded { border-color: #403b36; }
 
 .platformGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .platformCard { border: 1px solid #2b3030; background: rgba(16, 19, 19, .7); padding: 22px; min-height: 330px; }
@@ -161,8 +188,8 @@ h3 { margin: 0; font-size: 25px; letter-spacing: -.03em; font-weight: 620; }
 
 @media (max-width: 1100px) {
   .factGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .platformGrid { grid-template-columns: 1fr; }
-  .platformCard { min-height: 0; }
+  .platformGrid, .proofRunGrid { grid-template-columns: 1fr; }
+  .platformCard, .proofRunCard { min-height: 0; }
   .apiFamily, .evidenceText { min-height: 0; }
 }
 
@@ -173,7 +200,9 @@ h3 { margin: 0; font-size: 25px; letter-spacing: -.03em; font-weight: 620; }
   .heroMeta, .sectionHeading, .sectionHeading.compact { align-items: flex-start; flex-direction: column; }
   h1 { font-size: clamp(48px, 16vw, 72px); }
   .sourceNote { align-items: flex-start; flex-direction: column; }
+  .proofSource { margin-left: 0; }
   .factGrid, .systemGrid { grid-template-columns: 1fr; }
   .factCard { min-height: 0; }
   .autonomyFlag { text-align: left; }
+  .proofRunMeta { flex-direction: column; }
 }
