@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.enums import CandidateStatus, DecisionStatus, PublicationStatus
+from app.models.decision_event import DecisionEvent
 from app.models.spine import (
     Candidate,
     DistinctnessDecision,
@@ -18,6 +19,12 @@ from app.models.spine import (
     RightsGrant,
 )
 from app.services.rights import GrantEvidence
+
+
+def _status_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(getattr(value, "value", value))
 
 
 class PublicationStore:
@@ -35,6 +42,17 @@ class PublicationStore:
             if row is not None:
                 session.expunge(row)
             return row
+
+    def list_decision_events(self, candidate_id: UUID) -> tuple[DecisionEvent, ...]:
+        with self.session_factory() as session:
+            events = session.scalars(
+                select(DecisionEvent)
+                .where(DecisionEvent.candidate_id == candidate_id)
+                .order_by(DecisionEvent.sequence)
+            ).all()
+            for event in events:
+                session.expunge(event)
+            return tuple(events)
 
     def ensure_candidate(
         self,
@@ -60,8 +78,7 @@ class PublicationStore:
                     lineage=lineage,
                 )
                 session.add(candidate)
-                session.commit()
-                session.refresh(candidate)
+                session.flush()
             else:
                 expected = (
                     candidate.artist_id,
@@ -72,6 +89,22 @@ class PublicationStore:
                 actual = (artist_id, concept_id, audio_use_plan_id, target_platform)
                 if expected != actual:
                     raise ValueError("candidate identity does not match persisted lineage")
+
+            self._append_decision_event(
+                session,
+                candidate_id=candidate.id,
+                event_key="candidate:created",
+                event_type="CANDIDATE_CREATED",
+                status=candidate.status,
+                payload={
+                    "artist_id": str(candidate.artist_id),
+                    "concept_id": str(candidate.concept_id),
+                    "audio_use_plan_id": str(candidate.audio_use_plan_id),
+                    "target_platform": candidate.target_platform,
+                },
+            )
+            session.commit()
+            session.refresh(candidate)
             session.expunge(candidate)
             return candidate
 
@@ -105,6 +138,11 @@ class PublicationStore:
         distinctness_rule_version: str,
     ) -> None:
         with self.session_factory() as session:
+            rights_report = {
+                "missing": list(rights.missing),
+                "restricted": list(rights.restricted),
+                "expired": list(rights.expired),
+            }
             if session.scalar(
                 select(RightsDecision).where(
                     RightsDecision.candidate_id == candidate_id,
@@ -116,14 +154,11 @@ class PublicationStore:
                         candidate_id=candidate_id,
                         status=rights.status,
                         rule_version=rights_rule_version,
-                        report={
-                            "missing": list(rights.missing),
-                            "restricted": list(rights.restricted),
-                            "expired": list(rights.expired),
-                        },
+                        report=rights_report,
                     )
                 )
 
+            policy_report = {"reasons": list(policy.reasons)}
             if session.scalar(
                 select(PolicyDecision).where(
                     PolicyDecision.candidate_id == candidate_id,
@@ -135,10 +170,11 @@ class PublicationStore:
                         candidate_id=candidate_id,
                         status=policy.status,
                         rule_version=policy_rule_version,
-                        report={"reasons": list(policy.reasons)},
+                        report=policy_report,
                     )
                 )
 
+            distinctness_report = {"reasons": list(distinctness.reasons)}
             if session.scalar(
                 select(DistinctnessDecision).where(
                     DistinctnessDecision.candidate_id == candidate_id,
@@ -154,7 +190,7 @@ class PublicationStore:
                         semantic_similarity=0.0,
                         visual_similarity=0.0,
                         audio_overlap=0.0,
-                        report={"reasons": list(distinctness.reasons)},
+                        report=distinctness_report,
                     )
                 )
 
@@ -166,6 +202,37 @@ class PublicationStore:
                 for status in (rights.status, policy.status, distinctness.status)
             ):
                 candidate.status = CandidateStatus.REJECTED
+
+            self._append_decision_event(
+                session,
+                candidate_id=candidate_id,
+                event_key=f"rights:{rights_rule_version}",
+                event_type="RIGHTS_EVALUATED",
+                status=rights.status,
+                rule_version=rights_rule_version,
+                payload=rights_report,
+            )
+            self._append_decision_event(
+                session,
+                candidate_id=candidate_id,
+                event_key=f"policy:{policy_rule_version}",
+                event_type="POLICY_EVALUATED",
+                status=policy.status,
+                rule_version=policy_rule_version,
+                payload=policy_report,
+            )
+            self._append_decision_event(
+                session,
+                candidate_id=candidate_id,
+                event_key=f"distinctness:{distinctness_rule_version}",
+                event_type="DISTINCTNESS_EVALUATED",
+                status=distinctness.status,
+                rule_version=distinctness_rule_version,
+                payload={
+                    **distinctness_report,
+                    "novelty_score": distinctness.novelty_score,
+                },
+            )
             session.commit()
 
     def persist_render(
@@ -205,6 +272,19 @@ class PublicationStore:
                 if qc_status == DecisionStatus.CLEAR
                 else CandidateStatus.QUARANTINED
             )
+            self._append_decision_event(
+                session,
+                candidate_id=candidate_id,
+                event_key=f"render:{render.id}:qc",
+                event_type="RENDER_QC_EVALUATED",
+                status=qc_status,
+                payload={
+                    "render_id": str(render.id),
+                    "render_plan_id": str(render_plan_id),
+                    "sha256": render.sha256,
+                    "candidate_status": candidate.status.value,
+                },
+            )
             session.commit()
             session.refresh(render)
             session.expunge(render)
@@ -239,8 +319,26 @@ class PublicationStore:
                     status=PublicationStatus.SCHEDULED,
                 )
                 session.add(publication)
-                session.commit()
-                session.refresh(publication)
+                session.flush()
+            elif publication.idempotency_key != idempotency_key:
+                raise ValueError(
+                    "candidate/platform publication already exists with a different idempotency key"
+                )
+
+            self._append_decision_event(
+                session,
+                candidate_id=candidate_id,
+                event_key=f"publication:{publication.id}:reserved",
+                event_type="PUBLICATION_RESERVED",
+                status=publication.status,
+                payload={
+                    "publication_id": str(publication.id),
+                    "platform": publication.platform,
+                    "idempotency_key": publication.idempotency_key,
+                },
+            )
+            session.commit()
+            session.refresh(publication)
             session.expunge(publication)
             return publication
 
@@ -262,6 +360,20 @@ class PublicationStore:
             )
             publication.status = PublicationStatus.UPLOADING
             session.add(attempt)
+            session.flush()
+            self._append_decision_event(
+                session,
+                candidate_id=publication.candidate_id,
+                event_key=f"publication-attempt:{attempt.id}:started",
+                event_type="PUBLISH_ATTEMPT_STARTED",
+                status=PublicationStatus.UPLOADING,
+                payload={
+                    "publication_id": str(publication.id),
+                    "attempt_id": str(attempt.id),
+                    "attempt_number": attempt.attempt_number,
+                    "request_fingerprint": attempt.request_fingerprint,
+                },
+            )
             session.commit()
             session.refresh(attempt)
             session.expunge(attempt)
@@ -276,6 +388,19 @@ class PublicationStore:
             if attempt is not None:
                 attempt.status = PublicationStatus.QUARANTINED
                 attempt.error = error
+            if publication is not None and attempt is not None:
+                self._append_decision_event(
+                    session,
+                    candidate_id=publication.candidate_id,
+                    event_key=f"publication-attempt:{attempt.id}:quarantined",
+                    event_type="PUBLISH_ATTEMPT_QUARANTINED",
+                    status=PublicationStatus.QUARANTINED,
+                    payload={
+                        "publication_id": str(publication.id),
+                        "attempt_id": str(attempt.id),
+                        "attempt_number": attempt.attempt_number,
+                    },
+                )
             session.commit()
 
     def complete_attempt(
@@ -298,7 +423,67 @@ class PublicationStore:
             publication.published_at = published_at
             publication.canonical_url = canonical_url
             attempt.status = status
+            self._append_decision_event(
+                session,
+                candidate_id=publication.candidate_id,
+                event_key=f"publication-attempt:{attempt.id}:completed",
+                event_type="PUBLISH_ATTEMPT_COMPLETED",
+                status=status,
+                payload={
+                    "publication_id": str(publication.id),
+                    "attempt_id": str(attempt.id),
+                    "attempt_number": attempt.attempt_number,
+                    "platform_post_id": platform_post_id,
+                    "canonical_url": canonical_url,
+                },
+            )
             session.commit()
             session.refresh(publication)
             session.expunge(publication)
             return publication
+
+    @staticmethod
+    def _append_decision_event(
+        session: Session,
+        *,
+        candidate_id: UUID,
+        event_key: str,
+        event_type: str,
+        status: Any = None,
+        rule_version: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> DecisionEvent:
+        candidate_exists = session.scalar(
+            select(Candidate.id)
+            .where(Candidate.id == candidate_id)
+            .with_for_update()
+        )
+        if candidate_exists is None:
+            raise RuntimeError("candidate disappeared during decision event persistence")
+
+        existing = session.scalar(
+            select(DecisionEvent).where(
+                DecisionEvent.candidate_id == candidate_id,
+                DecisionEvent.event_key == event_key,
+            )
+        )
+        if existing is not None:
+            return existing
+
+        next_sequence = session.scalar(
+            select(func.coalesce(func.max(DecisionEvent.sequence), 0)).where(
+                DecisionEvent.candidate_id == candidate_id
+            )
+        )
+        event = DecisionEvent(
+            candidate_id=candidate_id,
+            sequence=int(next_sequence or 0) + 1,
+            event_key=event_key,
+            event_type=event_type,
+            status=_status_value(status),
+            rule_version=rule_version,
+            payload=payload or {},
+        )
+        session.add(event)
+        session.flush()
+        return event
