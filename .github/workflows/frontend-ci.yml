@@ -23,6 +23,8 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     env:
       NEXT_TELEMETRY_DISABLED: "1"
 
@@ -59,3 +61,43 @@ jobs:
           path: apps/web/package-lock.json
           if-no-files-found: error
           retention-days: 1
+
+  promote-lockfile:
+    name: Promote verified lockfile
+    needs: frontend
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'chore/frontend-reproducibility'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out proof branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Download verified lockfile artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: frontend-package-lock
+          path: /tmp/frontend-package-lock
+
+      - name: Commit generated lockfile only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/frontend-package-lock/package-lock.json
+          cp /tmp/frontend-package-lock/package-lock.json apps/web/package-lock.json
+          git add apps/web/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Lockfile already matches verified artifact."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Lock frontend dependencies"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
