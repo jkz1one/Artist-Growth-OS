@@ -4,6 +4,7 @@ import os
 from uuid import uuid4
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+os.environ.setdefault("JOB_API_TOKEN", "job-api-test-token-0123456789abcdef")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +17,8 @@ from app.db.base import Base
 from app.main import app
 from app.models.jobs import BackgroundJob  # noqa: F401
 from app.services.jobs import BackgroundJobStore
+
+JOB_HEADERS = {"Authorization": f"Bearer {os.environ['JOB_API_TOKEN']}"}
 
 
 @pytest.fixture
@@ -53,19 +56,19 @@ def command_payload() -> dict[str, object]:
 
 def test_publication_command_is_idempotent_and_inspectable(client: TestClient) -> None:
     payload = command_payload()
-    first = client.post("/v1/jobs/publication", json=payload)
+    first = client.post("/v1/jobs/publication", json=payload, headers=JOB_HEADERS)
     assert first.status_code == 202, first.text
     first_body = first.json()
     assert first_body["status"] == "PENDING"
     assert first_body["reused"] is False
 
-    second = client.post("/v1/jobs/publication", json=payload)
+    second = client.post("/v1/jobs/publication", json=payload, headers=JOB_HEADERS)
     assert second.status_code == 202, second.text
     second_body = second.json()
     assert second_body["id"] == first_body["id"]
     assert second_body["reused"] is True
 
-    status = client.get(f"/v1/jobs/{first_body['id']}")
+    status = client.get(f"/v1/jobs/{first_body['id']}", headers=JOB_HEADERS)
     assert status.status_code == 200
     assert status.json()["attempt_count"] == 0
     assert status.json()["status"] == "PENDING"
@@ -73,10 +76,10 @@ def test_publication_command_is_idempotent_and_inspectable(client: TestClient) -
 
 def test_same_idempotency_key_with_changed_command_is_conflict(client: TestClient) -> None:
     payload = command_payload()
-    assert client.post("/v1/jobs/publication", json=payload).status_code == 202
+    assert client.post("/v1/jobs/publication", json=payload, headers=JOB_HEADERS).status_code == 202
 
     changed = {**payload, "caption": "different"}
-    response = client.post("/v1/jobs/publication", json=changed)
+    response = client.post("/v1/jobs/publication", json=changed, headers=JOB_HEADERS)
     assert response.status_code == 409
 
 
@@ -86,5 +89,6 @@ def test_command_rejects_worker_owned_output_path(client: TestClient) -> None:
     response = client.post(
         "/v1/jobs/publication",
         json=payload,
+        headers=JOB_HEADERS,
     )
     assert response.status_code == 422
