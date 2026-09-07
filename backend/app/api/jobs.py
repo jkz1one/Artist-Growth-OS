@@ -5,11 +5,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.auth import require_job_api_access
 from app.api.deps import get_job_store
 from app.schemas.jobs import JobReceipt, JobStatusResponse, PublicationJobCommand
 from app.services.jobs import BackgroundJobStore, IdempotencyConflict, JobNotFound
 
-router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
+router = APIRouter(
+    prefix="/v1/jobs",
+    tags=["jobs"],
+    dependencies=[Depends(require_job_api_access)],
+)
 PUBLICATION_JOB_TYPE = "PUBLICATION_SPINE"
 
 
