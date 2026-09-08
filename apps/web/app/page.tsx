@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import { controlPlaneFixture } from "../lib/control-plane";
 import { loadProofReadModel } from "../lib/control-plane-api";
+import styles from "./page.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -130,6 +133,9 @@ export default async function Home() {
                       <span>{formatProofTime(proof.createdAt)}</span>
                       <span>{proof.accountActive ? "ACCOUNT ACTIVE" : "HISTORICAL ACCOUNT"}</span>
                     </div>
+                    <Link className={styles.proofDetailLink} href={`/proofs/${proof.id}`}>
+                      VIEW DURABLE EVIDENCE →
+                    </Link>
                   </article>
                 ))}
               </div>
