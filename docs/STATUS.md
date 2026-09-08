@@ -20,6 +20,8 @@ Implemented foundation:
 - reproducible Next.js frontend with committed npm lockfile and dedicated Frontend CI
 - private-alpha Next.js operator wall using server-only credentials and fail-closed configuration
 - COMMAND / SYSTEM dashboard with repository-backed software facts plus server-to-server durable proof reads; backend bearer credentials never enter browser JavaScript
+- protected read-only `/proofs/[runId]` detail view for durable capability snapshots, remote context/result, and ordered proof events
+- credential-safe Instagram `preflight` command that validates local runtime/media readiness without database access, Meta requests, or public publication
 
 ## Current remote validation baseline
 
@@ -44,7 +46,8 @@ Evidence progression:
 - post-PR #11 `main`: **121 tests passed**
 - PR #14 / default-deny API auth boundaries: **130 tests passed**
 - PR #15 / authenticated read-only proof API: **137 tests passed**
-- post-PR #15 `main` (`0012a1e68df32cd077242af817cc6faddb2bcafa`): Ruff, compileall, all **137 tests**, SQLite migration round-trip, and PostgreSQL 17 migration round-trip passed
+- PR #20 / credential-safe Instagram proof preflight: **141 tests passed**
+- post-PR #20 `main` (`eb4797755c17aa4b9140c3dbd2df1f88a76d92dc`): Ruff, compileall, all **141 tests**, SQLite migration round-trip, and PostgreSQL 17 migration round-trip passed
 
 The two current pytest warnings are upstream FastAPI/Starlette deprecation warnings, not failing application tests.
 
@@ -63,7 +66,8 @@ Evidence progression:
 - PR #13 COMMAND / SYSTEM control-plane shell passed locked install, TypeScript, and production build
 - PR #16 private-alpha Next.js operator wall passed the same exact gate before merge and again on `main`
 - PR #17 protected server-to-server proof reads passed locked install, TypeScript, and production build with live backend credentials absent
-- post-PR #17 `main` (`2741fc3493d05b883dc6594d432f67c4d373a1a0`): locked install, TypeScript, and production build passed
+- PR #19 protected proof-detail view passed locked install, TypeScript, and production build after one narrow compile-time narrowing repair
+- post-PR #19 `main` (`ab0c7dadcd6b79d1fe5e21f998872ca548dcdd26`): locked install, TypeScript, and production build passed
 
 ## Platform proof boundary
 
@@ -82,7 +86,9 @@ A blind second publish is never an acceptable recovery strategy.
 - durable container/media checkpoints support supervised reconciliation
 - final-publish ambiguity becomes recovery work rather than automatic retry
 - Instagram is the only platform with an explicitly enabled guarded operator publish path
-- native/owned sound, Trial Reels, real insights behavior, and an owned-account controlled proof remain empirical
+- `artist-growth-instagram-proof preflight --media-url ...` validates required runtime configuration, stable media URL shape, HTTPS, and controlled media-host membership without contacting Meta or writing the database
+- preflight output never serializes the access token and explicitly reports `network_request=false`, `database_write=false`, and `public_publish=false`
+- native/owned sound, Trial Reels, real insights behavior, actual account permissions/scopes, and an owned-account controlled proof remain empirical
 
 ### YouTube
 
@@ -121,23 +127,37 @@ The private-alpha web surface is protected before rendering by Next.js Proxy. `W
 
 After the operator wall succeeds, the Next.js server may call the authenticated proof API using server-only `API_BASE_URL` and `CONTROL_PLANE_READ_TOKEN`. The browser never receives the backend bearer credential. Reads use `cache: "no-store"`, a bounded timeout, runtime response validation, and explicit degraded states. If proof data is unavailable or misconfigured, the dashboard shows repository-backed software facts and no fabricated proof records.
 
+The protected proof-detail view remains read-only and shows only the credential-scrubbed durable projection already exposed by the backend. It has no publish, reconcile, metrics, enqueue-job, or other mutation controls.
+
 ## Current safety invariant
 
 - autonomy: **OFF**
 - rights/policy/distinctness/ambiguous delivery: **fail closed**
 - generic proof operator live publish: **disabled by default**
 - Instagram live proof: explicit runner enablement + exact human confirmation only
+- Instagram preflight: local-only; no DB write, no Meta request, no publish
 - YouTube/TikTok: proof-only, no live runner
 - proof inspector: read-only
 - control-plane API: authenticated GET-only proof reads
 - background-job API: separate credential from control-plane reads
 - private-alpha web: authenticated before rendering; backend read token remains server-only
-- dashboard: read-only durable proof visibility; no publish, reconcile, metrics, or job action controls
+- dashboard and proof detail: read-only durable proof visibility; no publish, reconcile, metrics, or job action controls
 
-## Next engineering increment
+## Next operational milestone
 
 Do not add more social adapters for their own sake and do not broaden live publication authority.
 
-The next control-plane slice should deepen **read-only proof observability**: add a protected proof-detail view that consumes the existing `GET /v1/control-plane/proofs/{run_id}` projection and exposes durable capability snapshot, remote context/result, and ordered proof events without adding mutation controls. Keep all social credentials server-side and preserve explicit degraded/error states.
+The next blocker is now **empirical rather than architectural**: provision a controlled Instagram professional account/app credential set, confirm the current Meta API version/scopes against official documentation, and provide one stable public HTTPS proof media URL on an allowlisted controlled host.
 
-After proof detail is visible, the next operational milestone is the first deliberate owned-account Instagram proof using separately provisioned credentials and controlled media. That remains an empirical/manual gate, not a coding assumption. YouTube/TikTok live runners, Trend Radar, autonomous creative generation, portfolio learning, and broad dashboard actions remain downstream.
+Before any live Meta request:
+
+1. re-verify the current official Instagram publishing/auth documentation and exact API version/scopes
+2. configure the runtime credentials outside chat/source control
+3. run `artist-growth-instagram-proof preflight --media-url <controlled-https-url>` and require a clean local-only result
+4. run `start` to capture real capabilities without publishing
+5. inspect the durable run before any public action
+6. invoke `publish` only as a deliberate controlled proof with the exact required confirmation phrase
+7. if the outcome is ambiguous, reconcile from durable remote context; never blind-republish
+8. collect raw metrics only after durable platform identity exists
+
+Until that empirical sequence is completed successfully, Instagram must not be promoted to production-ready. YouTube/TikTok live runners, Trend Radar, autonomous creative generation, portfolio learning, and broad dashboard mutation controls remain downstream.
