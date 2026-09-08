@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 import pytest
@@ -209,3 +210,84 @@ def test_start_rejects_query_string_media_url_before_persisting_run():
     assert harness.create_account_calls == 0
     assert harness.capture_calls == 0
     assert harness.publish_calls == 0
+
+
+def test_preflight_is_local_only_and_never_exposes_access_token(monkeypatch, capsys):
+    from app.platforms.proof.instagram import InstagramProofAdapter
+    from app.proofs import instagram_runner
+
+    def fail_harness():
+        raise AssertionError("preflight must not construct the database harness")
+
+    def fail_request(*args, **kwargs):
+        raise AssertionError("preflight must not make a Meta request")
+
+    monkeypatch.setattr(instagram_runner, "_build_harness", fail_harness)
+    monkeypatch.setattr(InstagramProofAdapter, "_request_json", fail_request)
+    secret = "super-secret-instagram-token"
+    code = instagram_runner.run_cli(
+        ["preflight", "--media-url", "https://cdn.media.example.com/proof.mp4"],
+        environ={
+            "INSTAGRAM_PROOF_API_VERSION": "v99.0",
+            "INSTAGRAM_PROOF_ACCESS_TOKEN": secret,
+            "INSTAGRAM_PROOF_MEDIA_HOSTS": "media.example.com,MEDIA.example.com",
+        },
+    )
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert secret not in output
+    payload = json.loads(output)
+    assert payload["action"] == "PREFLIGHT_ONLY"
+    assert payload["media_host"] == "cdn.media.example.com"
+    assert payload["allowed_media_hosts"] == ["media.example.com"]
+    assert payload["runtime_credentials_present"] is True
+    assert payload["network_request"] is False
+    assert payload["database_write"] is False
+    assert payload["public_publish"] is False
+
+
+def test_preflight_rejects_unstable_media_url_before_any_runtime_action(monkeypatch):
+    from app.proofs import instagram_runner
+
+    def fail_harness():
+        raise AssertionError("preflight must not construct the database harness")
+
+    monkeypatch.setattr(instagram_runner, "_build_harness", fail_harness)
+    with pytest.raises(ValueError, match="without query string or fragment"):
+        instagram_runner.run_cli(
+            ["preflight", "--media-url", "https://media.example.com/proof.mp4?sig=secret"],
+            environ={
+                "INSTAGRAM_PROOF_API_VERSION": "v99.0",
+                "INSTAGRAM_PROOF_ACCESS_TOKEN": "secret",
+                "INSTAGRAM_PROOF_MEDIA_HOSTS": "media.example.com",
+            },
+        )
+
+
+def test_preflight_rejects_non_https_media_url():
+    from app.proofs import instagram_runner
+
+    with pytest.raises(ValueError, match="public HTTPS URL"):
+        instagram_runner.run_cli(
+            ["preflight", "--media-url", "http://media.example.com/proof.mp4"],
+            environ={
+                "INSTAGRAM_PROOF_API_VERSION": "v99.0",
+                "INSTAGRAM_PROOF_ACCESS_TOKEN": "secret",
+                "INSTAGRAM_PROOF_MEDIA_HOSTS": "media.example.com",
+            },
+        )
+
+
+def test_preflight_rejects_media_host_outside_controlled_allowlist():
+    from app.proofs import instagram_runner
+
+    with pytest.raises(ValueError, match="controlled allowlist"):
+        instagram_runner.run_cli(
+            ["preflight", "--media-url", "https://other.example.com/proof.mp4"],
+            environ={
+                "INSTAGRAM_PROOF_API_VERSION": "v99.0",
+                "INSTAGRAM_PROOF_ACCESS_TOKEN": "secret",
+                "INSTAGRAM_PROOF_MEDIA_HOSTS": "media.example.com",
+            },
+        )

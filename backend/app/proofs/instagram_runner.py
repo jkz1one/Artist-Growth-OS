@@ -72,6 +72,34 @@ def _validate_instagram_media_url(media_url: str) -> None:
         )
 
 
+def _preflight_instagram_runtime(
+    environ: Mapping[str, str],
+    *,
+    media_url: str,
+) -> dict[str, Any]:
+    """Validate local proof runtime inputs without DB access or a Meta request."""
+
+    _validate_instagram_media_url(media_url)
+    config = InstagramOperatorConfig.from_env(environ)
+    adapter = config.build_adapter()
+    # Reuse the exact allowlist/HTTPS rule enforced immediately before publish.
+    adapter._validate_media_uri(media_url)
+    media_host = (urlsplit(media_url).hostname or "").lower()
+    return {
+        "action": "PREFLIGHT_ONLY",
+        "platform": "INSTAGRAM",
+        "api_family": adapter.api_family,
+        "api_version": config.api_version,
+        "media_host": media_host,
+        "allowed_media_hosts": list(config.allowed_media_hosts),
+        "runtime_credentials_present": True,
+        "network_request": False,
+        "database_write": False,
+        "public_publish": False,
+        "live_publish_confirmation_required": LIVE_PUBLISH_CONFIRMATION,
+    }
+
+
 class InstagramProofOperator(PlatformProofOperator):
     def __init__(
         self,
@@ -112,6 +140,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Operator-only Instagram proof runner. No command publishes implicitly.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    preflight = sub.add_parser(
+        "preflight",
+        help="validate local runtime and media inputs; never contacts Meta or writes the database",
+    )
+    preflight.add_argument("--media-url", required=True)
 
     start = sub.add_parser("start", help="create a proof run and capture capabilities; never publishes")
     start.add_argument("--external-account-id", required=True)
@@ -154,6 +188,12 @@ def _build_adapter(environ: Mapping[str, str]) -> InstagramProofAdapter:
 def run_cli(argv: list[str] | None = None, *, environ: Mapping[str, str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     env = os.environ if environ is None else environ
+
+    if args.command == "preflight":
+        result = _preflight_instagram_runtime(env, media_url=args.media_url)
+        print(json.dumps(result, indent=2, sort_keys=True, default=str))
+        return 0
+
     harness = _build_harness()
     adapter = None if args.command == "show" else _build_adapter(env)
     operator = InstagramProofOperator(harness, adapter)
