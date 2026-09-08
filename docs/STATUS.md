@@ -2,7 +2,7 @@
 
 ## Current foundation state
 
-Artist Growth OS is still in the foundation / controlled-proof phase. Autonomous social publishing remains disabled.
+Artist Growth OS remains in the foundation / controlled-proof phase. Autonomous social publishing is disabled.
 
 Implemented foundation:
 
@@ -15,8 +15,11 @@ Implemented foundation:
 - shared `PlatformProofOperator`; generic live publishing is disabled by default and an opted-in runner still requires the exact phrase `I_UNDERSTAND_THIS_WILL_POST_PUBLICLY`
 - Instagram guarded operator runner; YouTube and TikTok do not have live operator runners
 - read-only `ProofInspector` service plus credential-free `artist-growth-proof-inspect list|show` CLI
+- independent FastAPI bearer capabilities for control-plane reads and background-job API access
+- authenticated GET-only control-plane proof API backed by `ProofInspector`
 - reproducible Next.js frontend with committed npm lockfile and dedicated Frontend CI
-- first COMMAND / SYSTEM control-plane shell using typed repository fixture data only; no live credentials, network fetches, or action authority
+- private-alpha Next.js operator wall using server-only credentials and fail-closed configuration
+- COMMAND / SYSTEM dashboard with repository-backed software facts plus server-to-server durable proof reads; backend bearer credentials never enter browser JavaScript
 
 ## Current remote validation baseline
 
@@ -38,27 +41,33 @@ Evidence progression:
 - PR #8 / TikTok proof adapter: **88 tests passed**
 - PR #9 / shared proof operator: **96 tests passed**
 - PR #10 / proof inspector: **113 tests passed**
-- post-PR #11 `main` (`36179e251f0fd121cd25c73f1abbf52092c6ebfd`): **121 tests passed**, Ruff/compileall passed, SQLite and PostgreSQL 17 migration round-trips passed
+- post-PR #11 `main`: **121 tests passed**
+- PR #14 / default-deny API auth boundaries: **130 tests passed**
+- PR #15 / authenticated read-only proof API: **137 tests passed**
+- post-PR #15 `main` (`0012a1e68df32cd077242af817cc6faddb2bcafa`): Ruff, compileall, all **137 tests**, SQLite migration round-trip, and PostgreSQL 17 migration round-trip passed
 
 The two current pytest warnings are upstream FastAPI/Starlette deprecation warnings, not failing application tests.
 
 ### Frontend
 
-PR #12 removed the earlier frontend verification gap.
+Frontend CI uses Node.js 22 and requires:
 
-- committed npm lockfile: present
-- Node.js: 22 in CI
-- install: `npm ci --no-audit --no-fund`
-- TypeScript: passed
-- Next.js production build: passed
-- workflow permissions: `contents: read`
-- post-merge Frontend CI on `main` (`c52b73fde54b0a2e44795048d65c3aecd7ffe5e6`): passed
+- `npm ci --no-audit --no-fund`
+- TypeScript typecheck
+- real Next.js production build
+- workflow permissions limited to `contents: read`
 
-PR #13 control-plane code head `600163e158df5bb01ec0da54bdc951bb3ccac829` also passed locked install, TypeScript, and production build before this status update.
+Evidence progression:
+
+- PR #12 established the committed npm lockfile and reproducible frontend baseline
+- PR #13 COMMAND / SYSTEM control-plane shell passed locked install, TypeScript, and production build
+- PR #16 private-alpha Next.js operator wall passed the same exact gate before merge and again on `main`
+- PR #17 protected server-to-server proof reads passed locked install, TypeScript, and production build with live backend credentials absent
+- post-PR #17 `main` (`2741fc3493d05b883dc6594d432f67c4d373a1a0`): locked install, TypeScript, and production build passed
 
 ## Platform proof boundary
 
-No real social adapter is production-ready merely because official documentation describes an endpoint or mocked contract tests pass.
+No social adapter is production-ready merely because official documentation describes an endpoint or mocked contract tests pass.
 
 Promotion requires empirical owned-account evidence:
 
@@ -93,16 +102,24 @@ A blind second publish is never an acceptable recovery strategy.
 
 ## Proof inspection and control-plane safety
 
-`ProofInspector` is query-only. It can list durable proof runs and reconstruct account, capability snapshot, remote context/result, and ordered proof events. The entire projection passes through the credential/evidence safety checker.
+`ProofInspector` remains query-only. It can list durable proof runs and reconstruct account, capability snapshot, remote context/result, and ordered proof events. The entire projection passes through the credential/evidence safety checker.
 
 The CLI exposes only:
 
 - `artist-growth-proof-inspect list`
 - `artist-growth-proof-inspect show --run-id <UUID>`
 
-It exposes no publish, reconcile, or metrics command and constructs no social adapter.
+The FastAPI control-plane exposes only authenticated GET reads:
 
-The web control-plane currently uses typed repository fixture data rather than backend proof data. This is intentional: the FastAPI application does not yet have a deliberate operator-authentication boundary. Durable proof/admin data should not be exposed to the browser through a new HTTP route until that boundary exists and is tested.
+- `GET /v1/control-plane/session`
+- `GET /v1/control-plane/proofs`
+- `GET /v1/control-plane/proofs/{run_id}`
+
+The control-plane read token and job API token are independent capabilities. A read principal reports `publication_authority=false`; the read credential cannot access job routes and the job credential cannot access control-plane reads.
+
+The private-alpha web surface is protected before rendering by Next.js Proxy. `WEB_OPERATOR_USERNAME` and `WEB_OPERATOR_PASSWORD` are server-only and missing configuration fails closed. This Basic-auth wall is an alpha boundary and must run behind HTTPS; it is not the eventual multi-user identity system.
+
+After the operator wall succeeds, the Next.js server may call the authenticated proof API using server-only `API_BASE_URL` and `CONTROL_PLANE_READ_TOKEN`. The browser never receives the backend bearer credential. Reads use `cache: "no-store"`, a bounded timeout, runtime response validation, and explicit degraded states. If proof data is unavailable or misconfigured, the dashboard shows repository-backed software facts and no fabricated proof records.
 
 ## Current safety invariant
 
@@ -111,15 +128,16 @@ The web control-plane currently uses typed repository fixture data rather than b
 - generic proof operator live publish: **disabled by default**
 - Instagram live proof: explicit runner enablement + exact human confirmation only
 - YouTube/TikTok: proof-only, no live runner
-- proof inspector: read-only / database-only
-- control-plane web shell: fixture-backed / no platform credentials / no live actions
+- proof inspector: read-only
+- control-plane API: authenticated GET-only proof reads
+- background-job API: separate credential from control-plane reads
+- private-alpha web: authenticated before rendering; backend read token remains server-only
+- dashboard: read-only durable proof visibility; no publish, reconcile, metrics, or job action controls
 
 ## Next engineering increment
 
-Do not add more social adapters for their own sake.
+Do not add more social adapters for their own sake and do not broaden live publication authority.
 
-The next backend/control-plane boundary should be **operator authentication and authorization before any proof-inspection HTTP endpoint is mounted**. Keep the first auth slice small and auditable: protect future control-plane read APIs, distinguish operator reads from publication authority, and test default-deny behavior. Do not couple authentication work to live social credentials or to enabling autonomous publication.
+The next control-plane slice should deepen **read-only proof observability**: add a protected proof-detail view that consumes the existing `GET /v1/control-plane/proofs/{run_id}` projection and exposes durable capability snapshot, remote context/result, and ordered proof events without adding mutation controls. Keep all social credentials server-side and preserve explicit degraded/error states.
 
-After an authenticated read boundary exists, the fixture-backed COMMAND / SYSTEM shell can be connected to a read-only proof API. Real Instagram empirical proof remains a separate operational gate and requires deliberately provisioned owned-account credentials and controlled media, never secrets pasted into source or chat.
-
-Trend Radar, autonomous creative generation, portfolio learning, and broad live dashboard actions remain downstream.
+After proof detail is visible, the next operational milestone is the first deliberate owned-account Instagram proof using separately provisioned credentials and controlled media. That remains an empirical/manual gate, not a coding assumption. YouTube/TikTok live runners, Trend Radar, autonomous creative generation, portfolio learning, and broad dashboard actions remain downstream.
